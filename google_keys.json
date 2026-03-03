@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "wielerspel-app",
+  "private_key_id": "35b2045fd001dbe26aae29c5ac4577159dbb4d25",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDd3LcH9hFGKOgh\nV6e64q06EmDXh/hpGlwgnwYuq0BiU16BjYlSXOibDhVQK0yHJPWN42us24VEL0qV\nD+mgKPHDdqOIzRQH8gKfBNT7jZrkrWTSvZQ/xHnLqo7FMOPSE0HKLIc0rmZn2KfF\nf6SMkXsEwT9lLbm8ZtHZ5NzBfbMMVbBRL4YpfKSXlaRUfxd1as+vVnmmi0N4I7u4\nWbgvTK8tygiASgrwVNeS2gbwus05FvC3ZwVxtdJY0cteDj2GOQxFQI+mr47J6rr2\n4QqrIAIqy6kI/U2SdXpVACGo6PCSy8EmQnaGTbrPczgH4zZhZHMMeOt13jIwuGFX\nE0N2MDoTAgMBAAECggEASjGgAekPwMs4ScIzBOP+My/nM9y0PY3DpmMX4a6CYv9n\nWOLYu/L3FLdieENqnb1F4vPdU9q7l+BKzEucgOOAajH4IW0XmEqeBsjKYu9pj7TO\nxU0B0Utmwa3hfd9KKLwo4a//bSYvd+XzwS/c+udB4QaxKShf9znZTsli69AZ+vLj\nPKMe+gQxFr4ypG3EEohe0vP4UFYRy2H4WGtmmJNt3dmu95CSv4JlmooSqLvO/KCo\nkMlWn8r88LLt3qFGnTF+TPupnV9h3LPkXP71vTLnIq3gFtUYPLm6GLx9F5UOO4Gd\neNeWf0jjljCt/KJfrUn8rk20pM66RxMRhFuk3ikX7QKBgQD+enma/8bomFFYFcS3\nicDxFEz6qnKc/rKiW82drXd3lRYyb+ZGsdiC0Y/O7w9ELmE9WCXL7ipn+NnohekU\nuWH0ZzxRHMav1DIhvRcrYgquazD/NYoSWf4JmXfk81n+HBS6b+UaOBxfUy44/qzW\nn1n8YPVA00oRo1VMGN+5TataFwKBgQDfMFCdzk/0ELPlhIVxj45beuxlc/iG33C9\negJLZCJo5ECtptkqZYtSae8K81OYOL3f+biwpksZUIKrZTYTdbrrYbAK99A40AfF\nAB3/62QKGcdtMGWp08MIuOKwSfQ+ihVUoQL9J+2cXuss6gJQvZOxz9G6sKZHKMhy\nbrQbQhgpZQKBgQCesHlMstuzB+kR6OE3Iuvyahpm5gt640k5/c2G2jl5lLq20Rjk\nVNsTGON4w5LdjZ6Nxn4rYWWIWKJqYbcreT8gTZBLdIph8w0gBO6B2y2V/robK6Pi\nNcQ48D7XwvkHgTNb35MaeosW1qQoXoghflV7EGtf9WJnBVeXkJtSzqBgGQKBgQC9\nqGXpI6enpAXrNQjcrnvvWu7Fa542pms8aBDJFgdzkPsxVYZXU8DnwKNkb8+KnDUl\nviRm4HkSwuq3USN5t+KmIPYi6+EiVg00J9xWXCY/uxZPv/+0KAIlSE9CNSX7ewWT\nS9upWqO87J/2I8jh6ac3Q31aosA52fsz2sTsIOc9TQKBgEHiFn/I/yW8aMYf/NHe\nr4233E3HM2p4xRAv+1PEy1pB5QH+mPMVhxxKreh3jP4CE1neww5l0vz0Vi45QLM4\nM2ZTkozncOOhcSQX/Y4MrmgXAkYvdWRcZcM8o8xWsrTbIbsy4aC2FQlvQ7V3CekY\n0aVkFwzhAZwVFRJeELOYkN44\n-----END PRIVATE KEY-----\n",
+  "client_email": "wielerspel-app@wielerspel-app.iam.gserviceaccount.com",
+  "client_id": "107619269167820205842",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/wielerspel-app%40wielerspel-app.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
