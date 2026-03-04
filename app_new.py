@@ -17,6 +17,291 @@ from datetime import datetime
 # --- CONFIGURATIE ---
 st.set_page_config(page_title="K1xSam Klassiekerspel 2026", page_icon="🚴‍♂️", layout="wide")
 
+# --- CUSTOM CSS STYLING ---
+st.markdown("""
+<style>
+/* === GOOGLE FONTS === */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+
+/* === ROOT VARIABELEN === */
+:root {
+    --blauw: #1a2e4a;
+    --blauw-mid: #1e3a5f;
+    --blauw-licht: #2d5986;
+    --oranje: #f47c20;
+    --oranje-licht: #ff9a45;
+    --wit: #ffffff;
+    --grijs-licht: #f4f6f9;
+    --grijs-mid: #e2e8f0;
+    --tekst-donker: #1a2e4a;
+    --tekst-grijs: #64748b;
+}
+
+/* === ACHTERGROND === */
+.stApp {
+    background-color: var(--grijs-licht);
+    font-family: 'Inter', sans-serif;
+}
+
+/* === VERBERG STANDAARD SIDEBAR === */
+[data-testid="stSidebar"] {
+    display: none !important;
+}
+
+/* === VERBERG STREAMLIT HEADER/TOOLBAR === */
+header[data-testid="stHeader"] {
+    background: var(--blauw) !important;
+}
+#MainMenu, footer, header .stToolbar {
+    visibility: hidden;
+}
+
+/* === TOPBALK NAVIGATIE === */
+.nav-container {
+    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-mid) 100%);
+    padding: 0;
+    margin: -1rem -1rem 2rem -1rem;
+    box-shadow: 0 4px 20px rgba(26,46,74,0.3);
+    position: sticky;
+    top: 0;
+    z-index: 999;
+}
+
+.nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px 0 24px;
+}
+
+.nav-logo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--wit);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.nav-logo span {
+    color: var(--oranje);
+}
+
+.nav-season {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+/* === PAGE TITLE STYLING === */
+h1 {
+    font-family: 'Barlow Condensed', sans-serif !important;
+    font-weight: 800 !important;
+    font-size: 2.4rem !important;
+    color: var(--blauw) !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 1.5rem !important;
+}
+
+h2, h3 {
+    font-family: 'Barlow Condensed', sans-serif !important;
+    font-weight: 700 !important;
+    color: var(--blauw) !important;
+}
+
+/* === METRIC CARDS === */
+[data-testid="stMetric"] {
+    background: var(--wit);
+    border-radius: 12px;
+    padding: 20px !important;
+    border-left: 4px solid var(--oranje);
+    box-shadow: 0 2px 12px rgba(26,46,74,0.08);
+}
+
+[data-testid="stMetricLabel"] {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--tekst-grijs) !important;
+}
+
+[data-testid="stMetricValue"] {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 2rem !important;
+    font-weight: 700;
+    color: var(--blauw) !important;
+}
+
+/* === TABS STYLING === */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: var(--wit);
+    border-radius: 10px;
+    padding: 6px;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(26,46,74,0.08);
+    margin-bottom: 1.5rem;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--tekst-grijs);
+    border-radius: 8px;
+    padding: 8px 16px;
+    border: none !important;
+    background: transparent;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    background: var(--blauw) !important;
+    color: var(--wit) !important;
+}
+
+/* === DATAFRAME STYLING === */
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(26,46,74,0.08);
+    border: 1px solid var(--grijs-mid);
+}
+
+/* === SELECTBOX & INPUT STYLING === */
+[data-testid="stSelectbox"] > div > div {
+    border-radius: 8px !important;
+    border-color: var(--grijs-mid) !important;
+    font-family: 'Inter', sans-serif;
+}
+
+[data-testid="stTextInput"] input {
+    border-radius: 8px !important;
+    border-color: var(--grijs-mid) !important;
+    font-family: 'Inter', sans-serif;
+}
+
+/* === BUTTONS === */
+[data-testid="stButton"] > button {
+    background: linear-gradient(135deg, var(--oranje) 0%, var(--oranje-licht) 100%);
+    color: var(--wit);
+    border: none;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 24px;
+    box-shadow: 0 4px 12px rgba(244,124,32,0.3);
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+[data-testid="stButton"] > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(244,124,32,0.4);
+}
+
+/* === ALERTS & INFO === */
+[data-testid="stAlert"] {
+    border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+}
+
+/* === DIVIDER === */
+hr {
+    border-color: var(--grijs-mid) !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* === CARD CONTAINERS === */
+.card {
+    background: var(--wit);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 2px 16px rgba(26,46,74,0.08);
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--grijs-mid);
+}
+
+.card-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--blauw);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--oranje);
+    display: inline-block;
+}
+
+/* === RANGLIJST PODIUM === */
+.podium-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    background: var(--wit);
+    box-shadow: 0 1px 6px rgba(26,46,74,0.06);
+    font-family: 'Inter', sans-serif;
+}
+
+.rank-1 { border-left: 4px solid #FFD700; }
+.rank-2 { border-left: 4px solid #C0C0C0; }
+.rank-3 { border-left: 4px solid #CD7F32; }
+
+/* === SPINNER === */
+[data-testid="stSpinner"] {
+    color: var(--oranje) !important;
+}
+
+/* === MOBIEL RESPONSIVE === */
+@media (max-width: 768px) {
+    .nav-header {
+        padding: 12px 16px 0 16px;
+    }
+    .nav-logo {
+        font-size: 18px;
+    }
+    h1 {
+        font-size: 1.8rem !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
+    }
+}
+
+/* === KOERS BADGE === */
+.koers-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-licht) 100%);
+    color: var(--wit);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    letter-spacing: 0.5px;
+    margin: 2px;
+}
+
+.oranje-badge {
+    background: linear-gradient(135deg, var(--oranje) 0%, var(--oranje-licht) 100%);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- DATABASE CONFIGURATIE & VERBINDING ---
 
 
@@ -279,16 +564,47 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
     
     return totaal, details
 
-# --- MAIN APP ---
-pagina = st.sidebar.radio("Menu", ["Klassement", "Uitslag per Koers", "Renner-Koers Matrix", "Mijn Team", "Captains Kiezen", "Admin: Beheer"])
+# --- MAIN APP NAVIGATIE ---
+
+# Admin modus bepalen via query params
+query_params = st.query_params
+admin_modus = query_params.get("beheer", "") == "1"
+
+# Topnavigatie header met beheerknop rechtsboven
+beheer_url = "?beheer=1"
+slotje = "🔓" if admin_modus else "🔒"
+st.markdown(f"""
+<div class="nav-container">
+    <div class="nav-header">
+        <div class="nav-logo">K1<span>x</span>Sam <span style="color:rgba(255,255,255,0.4);font-weight:300;">|</span> Klassiekerspel</div>
+        <div style="display:flex; align-items:center; gap:16px;">
+            <div class="nav-season">🚴 Seizoen 2026</div>
+            <a href="{beheer_url}" title="Beheer" style="
+                color: rgba(255,255,255,0.25);
+                font-size: 16px;
+                text-decoration: none;
+                transition: color 0.2s;
+                padding: 4px;
+            " onmouseover="this.style.color='rgba(244,124,32,0.8)'" onmouseout="this.style.color='rgba(255,255,255,0.25)'">{slotje}</a>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "©️ Captains"]
+PAGINA_KEYS  = ["Klassement", "Uitslag per Koers", "Renner-Koers Matrix", "Mijn Team", "Captains Kiezen"]
+
+tab_klas, tab_uitslag, tab_matrix, tab_team, tab_captains = st.tabs(PAGINA_OPTIES)
 
 # Data inladen via Google Sheets (ttl=0 zorgt dat we altijd verse data hebben)
 u_all = read_sheet("uitslagen")
 s_all = read_sheet("speler_teams")
 k_all = read_sheet("keuzes")
 
+# =============================================
 # 1. KLASSEMENT
-if pagina == "Klassement":
+# =============================================
+with tab_klas:
     st.title("🏆 Klassementen")
     if u_all.empty or s_all.empty:
         st.info("Nog geen data beschikbaar. Zorg dat teams en uitslagen zijn geladen.")
@@ -381,8 +697,10 @@ if pagina == "Klassement":
                 
                 st.line_chart(df_pivot)
 
+# =============================================
 # 2. UITSLAG PER KOERS
-elif pagina == "Uitslag per Koers":
+# =============================================
+with tab_uitslag:
     st.title("🏁 Koersuitslag & Puntenverdeling")
     if not u_all.empty:
         volgorde = get_koersen_volgorde()
@@ -471,8 +789,10 @@ elif pagina == "Uitslag per Koers":
         else:
             st.info("Geen gegevens beschikbaar voor deze koers.")
 
+# =============================================
 # 3. RENNER-KOERS PUNTEN MATRIX
-elif pagina == "Renner-Koers Matrix":
+# =============================================
+with tab_matrix:
     st.title("📊 Punten Matrix")
     if not s_all.empty and not u_all.empty:
         speler = st.selectbox("Selecteer Deelnemer", sorted(s_all['speler_naam'].unique()))
@@ -543,8 +863,10 @@ elif pagina == "Renner-Koers Matrix":
 
         st.dataframe(df_matrix.style.applymap(style_matrix), use_container_width=True)
 
+# =============================================
 # 4. MIJN TEAM
-elif pagina == "Mijn Team":
+# =============================================
+with tab_team:
     st.title("🚌 Mijn Team Overzicht")
     if not s_all.empty:
         speler = st.selectbox("Naam:", sorted(s_all['speler_naam'].unique()))
@@ -579,8 +901,10 @@ elif pagina == "Mijn Team":
         )
         
 
+# =============================================
 # 5. CAPTAINS KIEZEN
-elif pagina == "Captains Kiezen":
+# =============================================
+with tab_captains:
     st.title("©️ Captains Beheer")
 
     if not s_all.empty:
@@ -680,8 +1004,10 @@ elif pagina == "Captains Kiezen":
             else:
                 st.error("Onjuiste pincode")
 
-# 6. ADMIN
-elif pagina == "Admin: Beheer":
+# =============================================
+# 6. ADMIN (verborgen - toegang via ?beheer=1)
+# =============================================
+if admin_modus:
     st.title("⚙️ Admin Dashboard")
     
     # --- WACHTWOORD BEVEILIGING ---
