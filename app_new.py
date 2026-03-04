@@ -303,15 +303,18 @@ hr {
 """, unsafe_allow_html=True)
 
 # --- DATABASE CONFIGURATIE & VERBINDING ---
+import os, json
 
-
-# 1. Pad naar je sleutel-bestand
-# Zorg dat dit bestand in dezelfde map staat als je app_new.py
-KEY_FILE = "google_keys.json"
-
-# 2. Verbinding opzetten direct vanuit het JSON bestand
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-credentials = Credentials.from_service_account_file(KEY_FILE, scopes=scopes)
+
+# Credentials laden: via environment variable (Railway) of lokaal JSON bestand
+google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
+if google_creds_env:
+    creds_dict = json.loads(google_creds_env)
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+else:
+    credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+
 gc = gspread.authorize(credentials)
 
 # 3. Open de sheet
