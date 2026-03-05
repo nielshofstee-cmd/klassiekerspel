@@ -569,35 +569,19 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
 
 # --- MAIN APP NAVIGATIE ---
 
-# Admin modus bepalen via query params
-query_params = st.query_params
-admin_modus = query_params.get("beheer", "") == "1"
-
-# Topnavigatie header met beheerknop rechtsboven
-beheer_url = "?beheer=1"
-slotje = "🔓" if admin_modus else "🔒"
-st.markdown(f"""
+# Topnavigatie header
+st.markdown("""
 <div class="nav-container">
     <div class="nav-header">
         <div class="nav-logo">K1<span>x</span>Sam <span style="color:rgba(255,255,255,0.4);font-weight:300;">|</span> Klassiekerspel</div>
-        <div style="display:flex; align-items:center; gap:16px;">
-            <div class="nav-season">🚴 Seizoen 2026</div>
-            <a href="{beheer_url}" title="Beheer" style="
-                color: rgba(255,255,255,0.25);
-                font-size: 16px;
-                text-decoration: none;
-                transition: color 0.2s;
-                padding: 4px;
-            " onmouseover="this.style.color='rgba(244,124,32,0.8)'" onmouseout="this.style.color='rgba(255,255,255,0.25)'">{slotje}</a>
-        </div>
+        <div class="nav-season">🚴 Seizoen 2026</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "©️ Captains"]
-PAGINA_KEYS  = ["Klassement", "Uitslag per Koers", "Renner-Koers Matrix", "Mijn Team", "Captains Kiezen"]
+PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "⚙️ Beheer"]
 
-tab_klas, tab_uitslag, tab_matrix, tab_team, tab_captains = st.tabs(PAGINA_OPTIES)
+tab_klas, tab_uitslag, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
 # Data inladen via Google Sheets (ttl=0 zorgt dat we altijd verse data hebben)
 u_all = read_sheet("uitslagen")
@@ -1008,9 +992,9 @@ with tab_captains:
                 st.error("Onjuiste pincode")
 
 # =============================================
-# 6. ADMIN (verborgen - toegang via ?beheer=1)
+# 6. ADMIN
 # =============================================
-if admin_modus:
+with tab_admin:
     st.title("⚙️ Admin Dashboard")
     
     # --- WACHTWOORD BEVEILIGING ---
