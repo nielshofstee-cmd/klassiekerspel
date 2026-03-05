@@ -396,79 +396,123 @@ KOERS_DATA = {
 # --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
 def scrape_en_save(koers_naam, url):
     try:
-        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
+        from procyclingstats import Stage
+        # Haal het relatieve pad op uit de volledige URL
+        relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
         time.sleep(random.uniform(2, 4))
-        response = scraper.get(url, timeout=25)
-        if response.status_code != 200: 
-            return False, f"Foutcode {response.status_code}"
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        table = soup.find('table', class_='results')
-        if not table: 
-            return False, "Geen uitslagentabel gevonden."
+        stage = Stage(relatief_pad)
+        resultaten = stage.results()
+        if not resultaten:
+            return False, "Geen resultaten gevonden via procyclingstats package."
 
         # 1. Haal huidige uitslagen op om te filteren
         existing_df = read_sheet("uitslagen")
         standard_cols = ['koers_naam', 'rank', 'rider', 'team']
-
         if not existing_df.empty:
             existing_df.columns = [str(c).strip().lower() for c in existing_df.columns]
-            # Behoud alles BEHALVE de koers die we nu scrapen (voorkomt dubbele data)
             other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
         else:
             other_races_df = pd.DataFrame(columns=standard_cols)
-        
-        # 2. Scrape de nieuwe data
-        temp_data = []
-        rows = table.find_all('tr')
-        
-        # Statussen die we expliciet willen meenemen naast de cijfers
-        toegestane_statussen = ["DNF", "OTL", "DSQ"]
 
-        for row in rows:
-            tds = row.find_all('td')
-            if not tds: continue
-            
-            # Haal de tekst uit de eerste kolom en maak schoon
-            rank_raw = tds[0].get_text(strip=True).upper()
-            
-            links = row.find_all('a', href=True)
-            rider, team = "", ""
-            for link in links:
-                href = link['href']
-                if "rider/" in href and not rider: 
-                    # separator=' ' zorgt dat voor- en achternaam gescheiden blijven
-                    rider = link.get_text(separator=' ', strip=True) 
-                elif "team/" in href and not team: 
-                    team = link.get_text(separator=' ', strip=True)
-            
-            # Logica: Alleen toevoegen als het een getal is OF in ons lijstje staat
-            is_getal = rank_raw.isdigit()
-            is_uitvaller = rank_raw in toegestane_statussen
-            
+        # 2. Verwerk de resultaten
+        toegestane_statussen = ["DNF", "OTL", "DSQ", "DNS"]
+        temp_data = []
+        for r in resultaten:
+            # Rank kan in verschillende velden zitten afhankelijk van de package versie
+            rank = str(r.get('rank', r.get('status', r.get('result', '')))).upper().strip()
+            rider_raw = r.get('rider_name', '').strip()
+            rider = ' '.join(w.capitalize() for w in rider_raw.split())
+            team = r.get('team_name', '').strip()
+            is_getal = rank.isdigit()
+            is_uitvaller = rank in toegestane_statussen
+            # Voeg toe als gefinisht, uitgevallen, OF als er een team bekend is (vangt edge cases op)
             if rider and (is_getal or is_uitvaller):
                 temp_data.append({
-                    "koers_naam": koers_naam, 
-                    "rank": rank_raw, 
-                    "rider": rider, 
+                    "koers_naam": koers_naam,
+                    "rank": rank,
+                    "rider": rider,
                     "team": team
                 })
-        
+            elif rider and team and not is_getal:
+                # Vangnet: renner heeft geen getal als rank maar wel een team -> DNF
+                temp_data.append({
+                    "koers_naam": koers_naam,
+                    "rank": "DNF",
+                    "rider": rider,
+                    "team": team
+                })
+
+        if not temp_data:
+            return False, "Geen renners verwerkt uit de resultaten."
+
         new_scraped_df = pd.DataFrame(temp_data)
-
-        # 3. Combineer: Oude andere koersen + Nieuwe uitslag van deze koers
         final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
-        final_df = final_df[standard_cols] # Altijd juiste volgorde
+        final_df = final_df[standard_cols]
 
-        # 4. Schrijf de volledige gecombineerde lijst terug naar Google Sheets
         ws_u = sh.worksheet("uitslagen")
-        ws_u.clear() 
+        ws_u.clear()
         ws_u.update([standard_cols] + final_df.values.tolist())
-        
-        # Forceer cache refresh zodat de nieuwe data direct zichtbaar is in de app
         st.cache_data.clear()
-        
+
         return True, f"Succes! {len(temp_data)} renners verwerkt (incl. DNF/OTL/DSQ)."
+    except Exception as e:
+        return False, f"Fout: {str(e)}"
+
+# --- STARTLIJST SCRAPER ---
+def scrape_startlijst_en_save(koers_naam, url):
+    try:
+        from procyclingstats import RaceStartlist
+        # Bouw de startlist URL
+        startlist_url = url.replace('/result', '/startlist').rstrip('/')
+        if not startlist_url.endswith('/startlist'):
+            startlist_url = startlist_url + '/startlist'
+        relatief_pad = startlist_url.replace("https://www.procyclingstats.com/", "").strip("/")
+        time.sleep(random.uniform(2, 4))
+        startlist = RaceStartlist(relatief_pad)
+        renners = startlist.startlist()
+        if not renners:
+            return False, "Geen startlijst gevonden via procyclingstats package."
+
+        # 1. Haal huidige startlijsten op om te filteren
+        standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
+        try:
+            existing_df = read_sheet("startlijsten")
+            if not existing_df.empty:
+                existing_df.columns = [str(c).strip().lower() for c in existing_df.columns]
+                other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
+            else:
+                other_races_df = pd.DataFrame(columns=standard_cols)
+        except:
+            other_races_df = pd.DataFrame(columns=standard_cols)
+
+        # 2. Verwerk de startlijst
+        temp_data = []
+        for r in renners:
+            rider_raw = r.get('rider_name', '').strip()
+            rider = ' '.join(w.capitalize() for w in rider_raw.split())
+            team = r.get('team_name', '').strip()
+            startnummer = str(r.get('number', r.get('bib', r.get('rank', '')))).strip()
+            if rider:
+                temp_data.append({
+                    "koers_naam": koers_naam,
+                    "startnummer": startnummer,
+                    "rider": rider,
+                    "team": team
+                })
+
+        if not temp_data:
+            return False, "Geen renners gevonden in de startlijst."
+
+        new_scraped_df = pd.DataFrame(temp_data)
+        final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
+        final_df = final_df[standard_cols]
+
+        ws_sl = sh.worksheet("startlijsten")
+        ws_sl.clear()
+        ws_sl.update([standard_cols] + final_df.values.tolist())
+        st.cache_data.clear()
+
+        return True, f"Succes! {len(temp_data)} renners in startlijst verwerkt."
     except Exception as e:
         return False, f"Fout: {str(e)}"
 
@@ -579,9 +623,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "⚙️ Beheer"]
+PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "⚙️ Beheer"]
 
-tab_klas, tab_uitslag, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
+tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
 # Data inladen via Google Sheets (ttl=0 zorgt dat we altijd verse data hebben)
 u_all = read_sheet("uitslagen")
@@ -777,6 +821,71 @@ with tab_uitslag:
             st.info("Geen gegevens beschikbaar voor deze koers.")
 
 # =============================================
+# 2b. STARTLIJSTEN
+# =============================================
+with tab_startlijst:
+    st.title("🚦 Startlijsten")
+
+    sl_all = read_sheet("startlijsten")
+
+    if sl_all.empty:
+        st.info("Nog geen startlijsten beschikbaar. Scrape ze eerst via de Beheer pagina.")
+    else:
+        sl_all.columns = [str(c).strip().lower() for c in sl_all.columns]
+
+        # Koers dropdown - gebruik volgorde uit koersen sheet
+        volgorde_sl = get_koersen_volgorde()
+        beschikbare_koersen_sl = sl_all['koers_naam'].unique().tolist()
+        koersen_sl_gesorteerd = [k for k in volgorde_sl if k in beschikbare_koersen_sl]
+        # Voeg koersen toe die niet in de volgorde staan (vangnet)
+        koersen_sl_gesorteerd += [k for k in beschikbare_koersen_sl if k not in koersen_sl_gesorteerd]
+
+        if not koersen_sl_gesorteerd:
+            st.info("Geen koersen gevonden in de startlijsten database.")
+        else:
+            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, key="sl_koers_view")
+
+            koers_df = sl_all[sl_all['koers_naam'] == gekozen_koers].copy()
+
+            if koers_df.empty:
+                st.info(f"Geen startlijst beschikbaar voor {gekozen_koers}.")
+            else:
+                # Groepeer per ploeg, behoud volgorde zoals op PCS (= volgorde in database)
+                ploegen = koers_df['team'].unique().tolist()
+
+                st.markdown(f"**{len(koers_df)} renners verdeeld over {len(ploegen)} ploegen**")
+                st.divider()
+
+                # Toon per ploeg in kolommen (2 kolommen naast elkaar)
+                cols = st.columns(2)
+                for i, ploeg in enumerate(ploegen):
+                    ploeg_df = koers_df[koers_df['team'] == ploeg].reset_index(drop=True)
+                    with cols[i % 2]:
+                        # Bouw renners HTML apart op
+                        renners_html = ""
+                        for _, row in ploeg_df.iterrows():
+                            nr = row['startnummer']
+                            naam = row['rider']
+                            renners_html += (
+                                f'<div style="display:flex;align-items:center;padding:5px 0;'
+                                f'font-family:Inter,sans-serif;font-size:13px;color:#1a2e4a;'
+                                f'border-bottom:1px solid #f4f6f9;">'
+                                f'<span style="color:#94a3b8;font-size:11px;width:28px;flex-shrink:0;">#{nr}</span>'
+                                f'<span>{naam}</span></div>'
+                            )
+                        st.markdown(
+                            f'<div style="background:white;border-radius:10px;padding:16px;'
+                            f'margin-bottom:16px;border-left:4px solid #f47c20;'
+                            f'box-shadow:0 2px 8px rgba(26,46,74,0.08);">'
+                            f'<div style="font-family:Barlow Condensed,sans-serif;font-size:15px;'
+                            f'font-weight:700;color:#1a2e4a;text-transform:uppercase;'
+                            f'letter-spacing:0.5px;margin-bottom:10px;padding-bottom:8px;'
+                            f'border-bottom:1px solid #e2e8f0;">{ploeg}</div>'
+                            f'{renners_html}</div>',
+                            unsafe_allow_html=True
+                        )
+
+# =============================================
 # 3. RENNER-KOERS PUNTEN MATRIX
 # =============================================
 with tab_matrix:
@@ -919,9 +1028,41 @@ with tab_captains:
                     st.warning(f"⚠️ De deadline voor {koers_keuze} is verstreken ({deadline_str}). Je kunt je captains niet meer wijzigen.")
                 else:
                     mr = sorted(s_all[s_all['speler_naam'] == naam]['renner_naam'].tolist())
-                    c1 = st.selectbox("Kies Captain 1 (3.0x)", mr)
-                    c2 = st.selectbox("Kies Captain 2 (2.5x)", [r for r in mr if r != c1])
-                    c3 = st.selectbox("Kies Captain 3 (2.0x)", [r for r in mr if r not in [c1, c2]])
+
+                    # Haal startlijst op voor deze koers
+                    sl_data = read_sheet("startlijsten")
+                    if not sl_data.empty:
+                        sl_data.columns = [str(c).strip().lower() for c in sl_data.columns]
+                        startlijst_namen = sl_data[sl_data['koers_naam'] == koers_keuze]['rider'].str.lower().tolist()
+                    else:
+                        startlijst_namen = []
+
+                    def verrijk_naam(renner):
+                        if startlijst_namen and renner.lower() in startlijst_namen:
+                            return f"✅ {renner}"
+                        elif startlijst_namen:
+                            return f"○ {renner}"
+                        return renner
+
+                    # Sorteer: renners op startlijst eerst, daarna de rest
+                    mr_op_startlijst = [verrijk_naam(r) for r in mr if startlijst_namen and r.lower() in startlijst_namen]
+                    mr_niet_op_startlijst = [verrijk_naam(r) for r in mr if not startlijst_namen or r.lower() not in startlijst_namen]
+                    mr_verrijkt = mr_op_startlijst + mr_niet_op_startlijst
+
+                    if startlijst_namen:
+                        st.caption("✅ = staat op startlijst   ○ = niet op startlijst")
+
+                    c1_verrijkt = st.selectbox("Kies Captain 1 (3.0x)", mr_verrijkt)
+                    c2_verrijkt = st.selectbox("Kies Captain 2 (2.5x)", [r for r in mr_verrijkt if r != c1_verrijkt])
+                    c3_verrijkt = st.selectbox("Kies Captain 3 (2.0x)", [r for r in mr_verrijkt if r not in [c1_verrijkt, c2_verrijkt]])
+
+                    # Strip het prefix weer voor opslaan
+                    def strip_prefix(naam):
+                        return naam.replace("✅ ", "").replace("○ ", "")
+
+                    c1 = strip_prefix(c1_verrijkt)
+                    c2 = strip_prefix(c2_verrijkt)
+                    c3 = strip_prefix(c3_verrijkt)
                     
                     if st.button("Captains Opslaan"):
                         new_entry = pd.DataFrame([{
@@ -1100,6 +1241,39 @@ with tab_admin:
                     st.cache_data.clear()
             else:
                 st.error("Geen koersen gevonden.")
+
+        st.divider()
+
+        # --- STARTLIJSTEN SCRAPER UI ---
+        st.subheader("🚦 Startlijsten Scrapen")
+        df_k2 = read_sheet("koersen")
+        if not df_k2.empty:
+            df_k2.columns = [str(c).strip().lower() for c in df_k2.columns]
+            koers_lijst2 = df_k2['koers_naam'].tolist()
+
+            geselecteerde_koers_sl = st.selectbox("Selecteer een koers voor startlijst:", ["---"] + koers_lijst2, key="sl_koers")
+            if st.button("Scrape startlijst geselecteerde koers") and geselecteerde_koers_sl != "---":
+                rij = df_k2[df_k2['koers_naam'] == geselecteerde_koers_sl].iloc[0]
+                ok, msg = scrape_startlijst_en_save(rij['koers_naam'], rij['url'])
+                if ok:
+                    st.success(f"✅ {msg}")
+                else:
+                    st.error(f"❌ {msg}")
+
+            st.write("---")
+
+            if st.button("Scrape startlijsten voor ALLE koersen"):
+                status_placeholder2 = st.empty()
+                for index, r in df_k2.iterrows():
+                    k_naam = r['koers_naam']
+                    k_url = r['url']
+                    status_placeholder2.info(f"Bezig met ({index+1}/{len(df_k2)}): {k_naam}...")
+                    ok, msg = scrape_startlijst_en_save(k_naam, k_url)
+                    st.write(f"{'✅' if ok else '❌'} {k_naam}: {msg}")
+                status_placeholder2.success("Klaar!")
+                st.cache_data.clear()
+        else:
+            st.error("Geen koersen gevonden.")
 
         st.divider()
         
