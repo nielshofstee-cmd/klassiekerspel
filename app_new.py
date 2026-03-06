@@ -46,6 +46,15 @@ st.markdown("""
 }
 
 /* === ACHTERGROND === */
+.block-container {
+    padding-top: 0 !important;
+}
+
+[data-testid="stImage"] > img {
+    border-radius: 0 !important;
+    display: block;
+}
+
 .stApp {
     background: linear-gradient(160deg, #ccdaee 0%, #b8cfe8 50%, #a0bfde 100%);
     background-attachment: fixed;
@@ -843,6 +852,10 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
     return totaal, details
 
 # --- MAIN APP NAVIGATIE ---
+
+# Header afbeelding
+if os.path.exists("header.jpg"):
+    st.image("header.jpg", use_container_width=True)
 
 # Topnavigatie header
 st.markdown("""
