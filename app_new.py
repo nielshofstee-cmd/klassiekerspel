@@ -853,17 +853,6 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
 
 # --- MAIN APP NAVIGATIE ---
 
-# Header afbeelding
-if os.path.exists("header.jpg"):
-    import base64
-    with open("header.jpg", "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode()
-    st.markdown(
-        f'<img src="data:image/jpeg;base64,{img_b64}" '
-        f'style="width:100%;height:80px;object-fit:cover;display:block;margin:0;padding:0;">',
-        unsafe_allow_html=True
-    )
-
 # Topnavigatie header
 st.markdown("""
 <div class="nav-container">
