@@ -398,16 +398,111 @@ hr {
     animation: fadeInUp 0.4s ease forwards;
 }
 
+/* === DROPDOWN TEKST ALTIJD DONKER === */
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stSelectbox"] > div > div * {
+    color: var(--tekst-donker) !important;
+    font-family: 'DM Sans', sans-serif;
+}
+
+/* Dropdown opties in lijst */
+[data-baseweb="popover"] li,
+[data-baseweb="menu"] li,
+[role="listbox"] li,
+[role="option"] {
+    color: var(--tekst-donker) !important;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px !important;
+}
+
+/* Input labels */
+[data-testid="stSelectbox"] label,
+[data-testid="stTextInput"] label {
+    color: var(--tekst-donker) !important;
+    font-weight: 600;
+    font-size: 14px !important;
+}
+
 /* === MOBIEL === */
 @media (max-width: 768px) {
-    .nav-header { padding: 12px 16px 0 16px; }
-    .nav-logo { font-size: 20px; letter-spacing: 2px; }
-    h1 { font-size: 2rem !important; }
+    /* Nav */
+    .nav-header {
+        padding: 0 16px;
+        height: 52px;
+    }
+    .nav-logo { font-size: 18px; letter-spacing: 1.5px; }
+    .nav-season { display: none; }
+
+    /* Titels */
+    h1 { font-size: 1.7rem !important; }
+    h2, h3 { font-size: 1.1rem !important; }
+
+    /* Tabs kleiner en scrollbaar */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding: 4px;
+        gap: 2px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab-list"]::-webkit-scrollbar {
+        display: none;
+    }
     [data-testid="stTabs"] [data-baseweb="tab"] {
         font-size: 11px;
         padding: 7px 10px;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
-    [data-testid="stMetricValue"] { font-size: 1.8rem !important; }
+
+    /* Metrics op mobiel */
+    [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
+    [data-testid="stMetric"] { padding: 16px !important; }
+
+    /* Dropdowns groter voor touch */
+    [data-testid="stSelectbox"] > div > div {
+        min-height: 44px !important;
+        font-size: 15px !important;
+        color: var(--tekst-donker) !important;
+    }
+
+    [data-testid="stSelectbox"] > div > div *,
+    [role="option"],
+    [data-baseweb="menu"] li {
+        color: var(--tekst-donker) !important;
+        font-size: 15px !important;
+    }
+
+    /* Buttons makkelijker klikbaar op touch */
+    [data-testid="stButton"] > button {
+        min-height: 44px;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    /* Input velden groter */
+    [data-testid="stTextInput"] input {
+        min-height: 44px !important;
+        font-size: 15px !important;
+        color: var(--tekst-donker) !important;
+    }
+
+    /* Minder zijmarges op mobiel */
+    [data-testid="stMainBlockContainer"] {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+
+    /* Dataframe op mobiel */
+    [data-testid="stDataFrame"] {
+        font-size: 12px;
+    }
+
+    /* Kolommen op mobiel onder elkaar */
+    [data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
