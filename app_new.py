@@ -1,3 +1,5 @@
+import os
+import json
 import unicodedata
 import streamlit as st
 import pandas as pd
@@ -10,6 +12,7 @@ from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+from procyclingstats import Stage, RaceStartlist
 
 
 # py -m streamlit run app_new.py         >> C:\Users\hofsteen\OneDrive - HEMA\Niels HEMA\Python projects\wielerspel\Wielerspel 2.0
@@ -536,8 +539,6 @@ hr {
 """, unsafe_allow_html=True)
 
 # --- DATABASE CONFIGURATIE & VERBINDING ---
-import os, json
-
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -564,7 +565,9 @@ def read_sheet(worksheet_name):
         time.sleep(random.uniform(0.5, 1.5)) 
         worksheet = sh.worksheet(worksheet_name)
         data = worksheet.get_all_records()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        return df
     except Exception as e:
         if "429" in str(e):
             st.error("Google limiet bereikt. Wacht 10 seconden en ververs de pagina.")
@@ -576,9 +579,8 @@ def read_sheet(worksheet_name):
 def get_koersen_volgorde():
     try:
         # Gebruik de nieuwe hulpfunctie om de koersen op te halen
-        df_k = read_sheet("koersen") 
+        df_k = read_sheet("koersen")
         if not df_k.empty:
-            df_k.columns = [c.strip() for c in df_k.columns]
             return df_k['koers_naam'].tolist()
         return []
     except Exception as e:
@@ -589,8 +591,11 @@ PUNTEN_SCHEMA = {
     11:40, 12:36, 13:32, 14:28, 15:24, 16:20, 17:16, 18:12, 19:8, 20:4
 }
 
+TABLE_HEADER_HEIGHT = 38
+TABLE_ROW_HEIGHT = 35
+
 # --- CONFIGURATIE DEADLINES 2026 ---
-KOERS_DATA = {
+_KOERS_DATA_FALLBACK = {
     "Omloop Het Nieuwsblad": "2026-02-28 11:00",
     "Kuurne Brussel Kuurne": "2026-03-01 11:00",
     "Strade Bianche": "2026-03-07 11:00",
@@ -608,11 +613,25 @@ KOERS_DATA = {
     "Liege Bastogne Liege": "2026-04-26 10:00"
 }
 
+# Laad deadlines vanuit de koersen sheet; valt terug op hardcoded waarden als de
+# 'deadline' kolom ontbreekt. Voeg een 'deadline' kolom toe aan de koersen sheet
+# (formaat: "YYYY-MM-DD HH:MM") om hier onderhoud te vermijden.
+_df_koersen_init = read_sheet("koersen")
+if (not _df_koersen_init.empty
+        and 'koers_naam' in _df_koersen_init.columns
+        and 'deadline' in _df_koersen_init.columns):
+    KOERS_DATA = {
+        str(row['koers_naam']).strip(): str(row['deadline']).strip()
+        for _, row in _df_koersen_init.iterrows()
+        if pd.notna(row['koers_naam']) and pd.notna(row['deadline'])
+    } or _KOERS_DATA_FALLBACK
+else:
+    KOERS_DATA = _KOERS_DATA_FALLBACK
+
 
 # --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
 def scrape_en_save(koers_naam, url):
     try:
-        from procyclingstats import Stage
         # Haal het relatieve pad op uit de volledige URL
         relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
         time.sleep(random.uniform(2, 4))
@@ -625,7 +644,6 @@ def scrape_en_save(koers_naam, url):
         existing_df = read_sheet("uitslagen")
         standard_cols = ['koers_naam', 'rank', 'rider', 'team']
         if not existing_df.empty:
-            existing_df.columns = [str(c).strip().lower() for c in existing_df.columns]
             other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
         else:
             other_races_df = pd.DataFrame(columns=standard_cols)
@@ -677,7 +695,6 @@ def scrape_en_save(koers_naam, url):
 # --- STARTLIJST SCRAPER ---
 def scrape_startlijst_en_save(koers_naam, url):
     try:
-        from procyclingstats import RaceStartlist
         # Bouw de startlist URL
         startlist_url = url.replace('/result', '/startlist').rstrip('/')
         if not startlist_url.endswith('/startlist'):
@@ -694,11 +711,10 @@ def scrape_startlijst_en_save(koers_naam, url):
         try:
             existing_df = read_sheet("startlijsten")
             if not existing_df.empty:
-                existing_df.columns = [str(c).strip().lower() for c in existing_df.columns]
                 other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
             else:
                 other_races_df = pd.DataFrame(columns=standard_cols)
-        except:
+        except Exception:
             other_races_df = pd.DataFrame(columns=standard_cols)
 
         # 2. Verwerk de startlijst
@@ -735,12 +751,9 @@ def scrape_startlijst_en_save(koers_naam, url):
 # --- REKEN LOGICA (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
 @st.cache_data(ttl=60)
 def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners):
-    # Lokale kopieën maken om de originele data niet te beschadigen maar wel kolommen te cleansen
+    # Lokale kopieën maken om de originele data niet te beschadigen
     u_df_local = u_all.copy()
-    u_df_local.columns = [str(c).strip().lower() for c in u_df_local.columns]
-    
     k_df_local = k_all.copy()
-    k_df_local.columns = [str(c).strip().lower() for c in k_df_local.columns]
 
     # Filter uitslagen voor deze koers
     u_df = u_df_local[u_df_local['koers_naam'] == koers_naam]
@@ -846,18 +859,10 @@ tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_captains, tab_a
 
 # Data inladen via Google Sheets
 u_all = read_sheet("uitslagen")
-if not u_all.empty:
-    u_all.columns = [str(c).strip().lower() for c in u_all.columns]
-
 s_all = read_sheet("speler_teams")
-if not s_all.empty:
-    s_all.columns = [str(c).strip().lower() for c in s_all.columns]
-
 k_all = read_sheet("keuzes")
 if k_all is None or k_all.empty:
     k_all = pd.DataFrame(columns=["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"])
-else:
-    k_all.columns = [str(c).strip().lower() for c in k_all.columns]
 
 koersen_volgorde = get_koersen_volgorde()
 
@@ -950,8 +955,7 @@ with tab_klas:
         # Functie voor compacte weergave zonder lege rijen, met trend kolom
         def display_compact_df(df):
             n_rijen = len(df)
-            # Exacte hoogte: header 38px + elke rij 35px
-            calc_height = 38 + (n_rijen * 35)
+            calc_height = TABLE_HEADER_HEIGHT + (n_rijen * TABLE_ROW_HEIGHT)
 
             df_show = df[['Deelnemer', 'Totaal']].copy().reset_index(drop=True)
             df_show.index += 1
@@ -1068,7 +1072,7 @@ with tab_uitslag:
             df_koers_punten.index += 1
             
             n_punten = len(df_koers_punten)
-            punten_height = 38 + (n_punten * 38)
+            punten_height = TABLE_HEADER_HEIGHT + (n_punten * 38)
             st.dataframe(
                 df_koers_punten,
                 column_config={
@@ -1098,8 +1102,6 @@ with tab_startlijst:
     if sl_all.empty:
         st.info("Nog geen startlijsten beschikbaar. Scrape ze eerst via de Beheer pagina.")
     else:
-        sl_all.columns = [str(c).strip().lower() for c in sl_all.columns]
-
         # Koers dropdown - gebruik volgorde uit koersen sheet
         volgorde_sl = koersen_volgorde
         beschikbare_koersen_sl = sl_all['koers_naam'].unique().tolist()
@@ -1227,7 +1229,7 @@ with tab_matrix:
                 return 'color: #0d1f35; font-size: 13px; font-weight: 600;'
 
         n_matrix_rows = len(df_matrix)
-        matrix_height = 38 + (n_matrix_rows * 38)
+        matrix_height = TABLE_HEADER_HEIGHT + (n_matrix_rows * 38)
         st.dataframe(
             df_matrix.style.applymap(style_matrix),
             use_container_width=True,
@@ -1257,7 +1259,7 @@ with tab_team:
 
         # Weergave met aangepaste kolombreedte en tabelhoogte
         n_renners = len(df_mijn_team)
-        team_height = 38 + (n_renners * 35)
+        team_height = TABLE_HEADER_HEIGHT + (n_renners * TABLE_ROW_HEIGHT)
         st.dataframe(
             df_mijn_team,
             column_config={
@@ -1309,7 +1311,6 @@ with tab_captains:
                     # Haal startlijst op voor deze koers
                     sl_data = read_sheet("startlijsten")
                     if not sl_data.empty:
-                        sl_data.columns = [str(c).strip().lower() for c in sl_data.columns]
                         startlijst_namen = sl_data[sl_data['koers_naam'] == koers_keuze]['rider'].str.lower().tolist()
                     else:
                         startlijst_namen = []
@@ -1334,8 +1335,8 @@ with tab_captains:
                     c3_verrijkt = st.selectbox("Kies Captain 3 (2.0x)", [r for r in mr_verrijkt if r not in [c1_verrijkt, c2_verrijkt]])
 
                     # Strip het prefix weer voor opslaan
-                    def strip_prefix(naam):
-                        return naam.replace("✅ ", "").replace("○ ", "")
+                    def strip_prefix(s):
+                        return s.replace("✅ ", "").replace("○ ", "")
 
                     c1 = strip_prefix(c1_verrijkt)
                     c2 = strip_prefix(c2_verrijkt)
@@ -1352,7 +1353,6 @@ with tab_captains:
                         
                         k_all_clean = k_all.copy()
                         if not k_all_clean.empty:
-                            k_all_clean.columns = [str(c).strip().lower() for c in k_all_clean.columns]
                             masker = (k_all_clean['speler_naam'] == naam) & (k_all_clean['koers_naam'] == koers_keuze)
                             andere_keuzes = k_all_clean[~masker].copy()
                             final_k = pd.concat([andere_keuzes, new_entry], ignore_index=True)
@@ -1433,9 +1433,6 @@ with tab_admin:
         
         with col_stat1:
             if not df_uitslagen_check.empty:
-                # Kolommen opschonen
-                df_uitslagen_check.columns = [str(c).strip().lower() for c in df_uitslagen_check.columns]
-                
                 # Totaal aantal unieke koersen en totaal aantal renners
                 totaal_uitslagen = len(df_uitslagen_check)
                 st.metric("Totaal aantal renners in database", totaal_uitslagen)
@@ -1453,9 +1450,6 @@ with tab_admin:
             
         with col_stat2:
             if not df_teams_check.empty:
-                # Kolommen opschonen
-                df_teams_check.columns = [str(c).strip().lower() for c in df_teams_check.columns]
-                
                 # Tel renners per speler
                 spelers_count = df_teams_check.groupby('speler_naam')['renner_naam'].count().reset_index()
                 spelers_count.columns = ['Speler', 'Aantal Renners']
@@ -1471,7 +1465,6 @@ with tab_admin:
         st.divider()
         df_startlijsten_check = read_sheet("startlijsten")
         if not df_startlijsten_check.empty:
-            df_startlijsten_check.columns = [str(c).strip().lower() for c in df_startlijsten_check.columns]
             totaal_startlijsten = len(df_startlijsten_check)
             st.metric("Totaal aantal renners in startlijsten", totaal_startlijsten)
             sl_counts = df_startlijsten_check.groupby('koers_naam')['rider'].count().reset_index()
@@ -1510,7 +1503,6 @@ with tab_admin:
             df_k = read_sheet("koersen")
             
             if not df_k.empty:
-                df_k.columns = [str(c).strip().lower() for c in df_k.columns]
                 koers_lijst = df_k['koers_naam'].tolist()
                 
                 # Optie 1: Individuele koers
@@ -1544,14 +1536,12 @@ with tab_admin:
 
         # --- STARTLIJSTEN SCRAPER UI ---
         st.subheader("🚦 Startlijsten Scrapen")
-        df_k2 = read_sheet("koersen")
-        if not df_k2.empty:
-            df_k2.columns = [str(c).strip().lower() for c in df_k2.columns]
-            koers_lijst2 = df_k2['koers_naam'].tolist()
+        if not df_k.empty:
+            koers_lijst2 = df_k['koers_naam'].tolist()
 
             geselecteerde_koers_sl = st.selectbox("Selecteer een koers voor startlijst:", ["---"] + koers_lijst2, key="sl_koers")
             if st.button("Scrape startlijst geselecteerde koers") and geselecteerde_koers_sl != "---":
-                rij = df_k2[df_k2['koers_naam'] == geselecteerde_koers_sl].iloc[0]
+                rij = df_k[df_k['koers_naam'] == geselecteerde_koers_sl].iloc[0]
                 ok, msg = scrape_startlijst_en_save(rij['koers_naam'], rij['url'])
                 if ok:
                     st.success(f"✅ {msg}")
@@ -1562,10 +1552,10 @@ with tab_admin:
 
             if st.button("Scrape startlijsten voor ALLE koersen"):
                 status_placeholder2 = st.empty()
-                for index, r in df_k2.iterrows():
+                for index, r in df_k.iterrows():
                     k_naam = r['koers_naam']
                     k_url = r['url']
-                    status_placeholder2.info(f"Bezig met ({index+1}/{len(df_k2)}): {k_naam}...")
+                    status_placeholder2.info(f"Bezig met ({index+1}/{len(df_k)}): {k_naam}...")
                     ok, msg = scrape_startlijst_en_save(k_naam, k_url)
                     st.write(f"{'✅' if ok else '❌'} {k_naam}: {msg}")
                 status_placeholder2.success("Klaar!")
