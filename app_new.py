@@ -446,6 +446,14 @@ hr {
 }
 
 /* Dropdown opties in lijst */
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div,
+[data-baseweb="menu"],
+[role="listbox"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
 [data-baseweb="popover"] li,
 [data-baseweb="menu"] li,
 [role="listbox"] li,
@@ -453,6 +461,14 @@ hr {
     color: var(--tekst-donker) !important;
     font-family: 'DM Sans', sans-serif;
     font-size: 14px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+[role="option"]:hover,
+[role="option"][aria-selected="true"] {
+    background: #f0f4f8 !important;
+    background-color: #f0f4f8 !important;
 }
 
 /* Input labels */
@@ -505,6 +521,8 @@ hr {
         min-height: 44px !important;
         font-size: 15px !important;
         color: var(--tekst-donker) !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
     }
 
     [data-testid="stSelectbox"] > div > div *,
@@ -512,6 +530,23 @@ hr {
     [data-baseweb="menu"] li {
         color: var(--tekst-donker) !important;
         font-size: 15px !important;
+    }
+
+    /* Dropdown popover op mobiel altijd wit */
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] > div,
+    [data-baseweb="menu"],
+    [role="listbox"] {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+    }
+
+    [data-baseweb="popover"] li,
+    [data-baseweb="menu"] li,
+    [role="option"] {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #0d1f35 !important;
     }
 
     /* Buttons makkelijker klikbaar op touch */
