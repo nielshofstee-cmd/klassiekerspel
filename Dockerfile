@@ -13,8 +13,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Alle bestanden van je pc naar de container kopiëren
-# (Inclusief app_new.py en google_keys.json)
+# Alle bestanden kopiëren (google_keys.json wordt uitgesloten via .dockerignore)
 COPY . .
 
 # Poort 8501 openzetten voor Streamlit
