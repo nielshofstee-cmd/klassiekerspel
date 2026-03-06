@@ -572,25 +572,6 @@ def read_sheet(worksheet_name):
             st.error(f"Fout bij laden van {worksheet_name}: {e}")
         return pd.DataFrame()
 
-# 5. --- DATA INLADEN MET PAUZES EN KOLOM-SCHOONMAAK ---
-u_all = read_sheet("uitslagen")
-if not u_all.empty: 
-    u_all.columns = [str(c).strip().lower() for c in u_all.columns]
-
-time.sleep(1) # API Pauze
-
-s_all = read_sheet("speler_teams")
-if not s_all.empty: 
-    s_all.columns = [str(c).strip().lower() for c in s_all.columns]
-
-time.sleep(1) # API Pauze
-
-k_all = read_sheet("keuzes")
-# Vangnet: als de sheet leeg is, maak een DataFrame met de juiste koppen
-if k_all is None or k_all.empty:
-    k_all = pd.DataFrame(columns=["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"])
-else:
-    k_all.columns = [str(c).strip().lower() for c in k_all.columns]
 
 def get_koersen_volgorde():
     try:
@@ -752,6 +733,7 @@ def scrape_startlijst_en_save(koers_naam, url):
         return False, f"Fout: {str(e)}"
 
 # --- REKEN LOGICA (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
+@st.cache_data(ttl=60)
 def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners):
     # Lokale kopieën maken om de originele data niet te beschadigen maar wel kolommen te cleansen
     u_df_local = u_all.copy()
@@ -862,10 +844,22 @@ PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊
 
 tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
-# Data inladen via Google Sheets (ttl=0 zorgt dat we altijd verse data hebben)
+# Data inladen via Google Sheets
 u_all = read_sheet("uitslagen")
+if not u_all.empty:
+    u_all.columns = [str(c).strip().lower() for c in u_all.columns]
+
 s_all = read_sheet("speler_teams")
+if not s_all.empty:
+    s_all.columns = [str(c).strip().lower() for c in s_all.columns]
+
 k_all = read_sheet("keuzes")
+if k_all is None or k_all.empty:
+    k_all = pd.DataFrame(columns=["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"])
+else:
+    k_all.columns = [str(c).strip().lower() for c in k_all.columns]
+
+koersen_volgorde = get_koersen_volgorde()
 
 # =============================================
 # 1. KLASSEMENT
@@ -875,7 +869,7 @@ with tab_klas:
     if u_all.empty or s_all.empty:
         st.info("Nog geen data beschikbaar. Zorg dat teams en uitslagen zijn geladen.")
     else:
-        volgorde_csv = get_koersen_volgorde()
+        volgorde_csv = koersen_volgorde
         beschikbare_koersen = u_all['koers_naam'].unique()
         koersen_gehad = [k for k in volgorde_csv if k in beschikbare_koersen]
         voor_de_zekerheid = [k for k in beschikbare_koersen if k not in koersen_gehad]
@@ -934,10 +928,11 @@ with tab_klas:
             return {speler: i+1 for i, (speler, _) in enumerate(gesorteerd)}
 
         def maak_trend_kolom(df_weergave, vorige_ranks):
+            rank_lookup = {speler: i + 1 for i, speler in enumerate(df_weergave['Deelnemer'])}
             trends = []
             for i, row in df_weergave.iterrows():
                 speler = row['Deelnemer']
-                huidige_rank = list(df_weergave['Deelnemer']).index(speler) + 1
+                huidige_rank = rank_lookup[speler]
                 if speler in vorige_ranks:
                     oud = vorige_ranks[speler]
                     if huidige_rank < oud:
@@ -1010,7 +1005,7 @@ with tab_klas:
 with tab_uitslag:
     st.title("🏁 Koersuitslag & Puntenverdeling")
     if not u_all.empty:
-        volgorde = get_koersen_volgorde()
+        volgorde = koersen_volgorde
         koers_opties = [k for k in volgorde if k in u_all['koers_naam'].unique()]
         koers = st.selectbox("Selecteer een koers:", koers_opties if koers_opties else u_all['koers_naam'].unique())
         
@@ -1106,7 +1101,7 @@ with tab_startlijst:
         sl_all.columns = [str(c).strip().lower() for c in sl_all.columns]
 
         # Koers dropdown - gebruik volgorde uit koersen sheet
-        volgorde_sl = get_koersen_volgorde()
+        volgorde_sl = koersen_volgorde
         beschikbare_koersen_sl = sl_all['koers_naam'].unique().tolist()
         koersen_sl_gesorteerd = [k for k in volgorde_sl if k in beschikbare_koersen_sl]
         # Voeg koersen toe die niet in de volgorde staan (vangnet)
@@ -1165,7 +1160,7 @@ with tab_matrix:
     if not s_all.empty and not u_all.empty:
         speler = st.selectbox("Selecteer Deelnemer", sorted(s_all['speler_naam'].unique()))
         
-        volgorde = get_koersen_volgorde()
+        volgorde = koersen_volgorde
         beschikbare_koersen = u_all['koers_naam'].unique()
         koersen = [k for k in volgorde if k in beschikbare_koersen]
         
@@ -1482,7 +1477,7 @@ with tab_admin:
             sl_counts = df_startlijsten_check.groupby('koers_naam')['rider'].count().reset_index()
             sl_counts.columns = ['Koers', 'Aantal Renners op Startlijst']
             # Sorteer op chronologische volgorde uit de koersen sheet
-            volgorde_admin = get_koersen_volgorde()
+            volgorde_admin = koersen_volgorde
             if volgorde_admin:
                 sl_counts['volgorde'] = sl_counts['Koers'].apply(
                     lambda k: volgorde_admin.index(k) if k in volgorde_admin else 999
