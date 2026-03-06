@@ -285,7 +285,7 @@ h2, h3 {
     border: 1px solid var(--grijs-mid);
 }
 
-/* Alle tekst in tabellen donkerblauw */
+/* Alle tekst in tabellen donkerblauw + witte achtergrond (ook bij donkere modus OS) */
 [data-testid="stDataFrame"] td,
 [data-testid="stDataFrame"] th,
 [data-testid="stDataFrame"] [class*="cell"],
@@ -295,6 +295,7 @@ h2, h3 {
     color: var(--tekst-donker) !important;
     font-family: 'DM Sans', sans-serif !important;
     font-size: 13px !important;
+    background-color: #ffffff !important;
 }
 
 /* Header rij donkerblauw en vet */
@@ -311,6 +312,13 @@ h2, h3 {
 /* Afwisselende rijkleuren */
 [data-testid="stDataFrame"] tr:nth-child(even) td {
     background-color: #f5f8fc !important;
+}
+
+/* Tabel wrapper altijd wit */
+[data-testid="stDataFrame"] > div,
+[data-testid="stDataFrame"] iframe,
+[data-testid="stDataFrame"] [data-testid="StyledFullScreenFrame"] {
+    background-color: #ffffff !important;
 }
 
 /* === SELECTBOX & INPUT === */
@@ -569,9 +577,24 @@ hr {
         padding-right: 12px !important;
     }
 
-    /* Dataframe op mobiel */
-    [data-testid="stDataFrame"] {
+    /* Dataframe op mobiel altijd witte achtergrond */
+    [data-testid="stDataFrame"],
+    [data-testid="stDataFrame"] > div,
+    [data-testid="stDataFrame"] td,
+    [data-testid="stDataFrame"] th,
+    [data-testid="stDataFrame"] [class*="cell"],
+    [data-testid="stDataFrame"] [class*="header"],
+    [data-testid="stDataFrame"] span,
+    [data-testid="stDataFrame"] div {
         font-size: 12px;
+        background-color: #ffffff !important;
+        color: var(--tekst-donker) !important;
+    }
+
+    [data-testid="stDataFrame"] th,
+    [data-testid="stDataFrame"] [role="columnheader"] {
+        background-color: #e8eef6 !important;
+        color: var(--blauw) !important;
     }
 
     /* Kolommen op mobiel onder elkaar */
