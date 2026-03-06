@@ -21,168 +21,215 @@ st.set_page_config(page_title="K1xSam Klassiekerspel 2026", page_icon="🚴‍�
 st.markdown("""
 <style>
 /* === GOOGLE FONTS === */
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
 
 /* === ROOT VARIABELEN === */
 :root {
-    --blauw: #1a2e4a;
-    --blauw-mid: #1e3a5f;
-    --blauw-licht: #2d5986;
+    --blauw: #0d1f35;
+    --blauw-mid: #112840;
+    --blauw-licht: #1a4a7a;
+    --blauw-accent: #1e5799;
     --oranje: #f47c20;
     --oranje-licht: #ff9a45;
+    --oranje-glow: rgba(244,124,32,0.15);
     --wit: #ffffff;
-    --grijs-licht: #f4f6f9;
-    --grijs-mid: #e2e8f0;
-    --tekst-donker: #1a2e4a;
-    --tekst-grijs: #64748b;
+    --grijs-licht: #eef1f6;
+    --grijs-mid: #d8e0eb;
+    --grijs-donker: #8a9ab5;
+    --tekst-donker: #0d1f35;
+    --tekst-grijs: #5a6a82;
+    --card-shadow: 0 4px 24px rgba(13,31,53,0.10);
+    --card-shadow-hover: 0 8px 32px rgba(13,31,53,0.16);
 }
 
-/* === ACHTERGROND === */
+/* === ACHTERGROND MET SUBTIELE TEXTUUR === */
 .stApp {
     background-color: var(--grijs-licht);
-    font-family: 'Inter', sans-serif;
+    background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(30,87,153,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 100%, rgba(244,124,32,0.04) 0%, transparent 60%);
+    font-family: 'DM Sans', sans-serif;
 }
 
 /* === VERBERG STANDAARD SIDEBAR === */
-[data-testid="stSidebar"] {
-    display: none !important;
-}
+[data-testid="stSidebar"] { display: none !important; }
 
-/* === VERBERG STREAMLIT HEADER/TOOLBAR === */
-header[data-testid="stHeader"] {
-    background: var(--blauw) !important;
-}
-#MainMenu, footer, header .stToolbar {
-    visibility: hidden;
-}
+/* === VERBERG STREAMLIT CHROME === */
+header[data-testid="stHeader"] { background: var(--blauw) !important; }
+#MainMenu, footer, header .stToolbar { visibility: hidden; }
 
 /* === TOPBALK NAVIGATIE === */
 .nav-container {
-    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-mid) 100%);
+    background: linear-gradient(160deg, var(--blauw) 0%, var(--blauw-mid) 60%, #0a1e34 100%);
     padding: 0;
     margin: -1rem -1rem 2rem -1rem;
-    box-shadow: 0 4px 20px rgba(26,46,74,0.3);
+    box-shadow: 0 4px 32px rgba(13,31,53,0.45);
     position: sticky;
     top: 0;
     z-index: 999;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .nav-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 24px 0 24px;
+    padding: 16px 28px 0 28px;
 }
 
 .nav-logo {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px;
-    font-weight: 800;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    font-weight: 400;
     color: var(--wit);
-    letter-spacing: 1px;
+    letter-spacing: 3px;
     text-transform: uppercase;
+    line-height: 1;
 }
 
 .nav-logo span {
     color: var(--oranje);
+    text-shadow: 0 0 20px rgba(244,124,32,0.4);
+}
+
+.nav-logo .sep {
+    color: rgba(255,255,255,0.2);
+    margin: 0 8px;
+    font-weight: 300;
 }
 
 .nav-season {
-    font-family: 'Inter', sans-serif;
-    font-size: 11px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10px;
     font-weight: 500;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.4);
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
+    background: rgba(255,255,255,0.05);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
 }
 
-/* === PAGE TITLE STYLING === */
+/* === PAGE TITLES === */
 h1 {
-    font-family: 'Barlow Condensed', sans-serif !important;
-    font-weight: 800 !important;
-    font-size: 2.4rem !important;
+    font-family: 'Bebas Neue', sans-serif !important;
+    font-weight: 400 !important;
+    font-size: 2.8rem !important;
     color: var(--blauw) !important;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px !important;
     margin-bottom: 1.5rem !important;
+    line-height: 1 !important;
+    position: relative;
+}
+
+h1::after {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--oranje), transparent);
+    margin-top: 8px;
+    border-radius: 2px;
 }
 
 h2, h3 {
-    font-family: 'Barlow Condensed', sans-serif !important;
-    font-weight: 700 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 600 !important;
     color: var(--blauw) !important;
+    letter-spacing: 0.2px !important;
 }
 
 /* === METRIC CARDS === */
 [data-testid="stMetric"] {
     background: var(--wit);
-    border-radius: 12px;
-    padding: 20px !important;
-    border-left: 4px solid var(--oranje);
-    box-shadow: 0 2px 12px rgba(26,46,74,0.08);
+    border-radius: 14px;
+    padding: 22px 24px !important;
+    border: 1px solid var(--grijs-mid);
+    border-top: 3px solid var(--oranje);
+    box-shadow: var(--card-shadow);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+[data-testid="stMetric"]:hover {
+    box-shadow: var(--card-shadow-hover);
+    transform: translateY(-1px);
 }
 
 [data-testid="stMetricLabel"] {
-    font-family: 'Inter', sans-serif;
-    font-size: 12px !important;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px !important;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     color: var(--tekst-grijs) !important;
 }
 
 [data-testid="stMetricValue"] {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 2rem !important;
-    font-weight: 700;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem !important;
+    font-weight: 400;
     color: var(--blauw) !important;
+    letter-spacing: 1px;
 }
 
-/* === TABS STYLING === */
+/* === TABS === */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
     background: var(--wit);
-    border-radius: 10px;
-    padding: 6px;
-    gap: 4px;
-    box-shadow: 0 2px 8px rgba(26,46,74,0.08);
-    margin-bottom: 1.5rem;
-}
-
-[data-testid="stTabs"] [data-baseweb="tab"] {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--tekst-grijs);
-    border-radius: 8px;
-    padding: 8px 16px;
-    border: none !important;
-    background: transparent;
-}
-
-[data-testid="stTabs"] [aria-selected="true"] {
-    background: var(--blauw) !important;
-    color: var(--wit) !important;
-}
-
-/* === DATAFRAME STYLING === */
-[data-testid="stDataFrame"] {
     border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 2px 12px rgba(26,46,74,0.08);
+    padding: 5px;
+    gap: 3px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 2rem;
     border: 1px solid var(--grijs-mid);
 }
 
-/* === SELECTBOX & INPUT STYLING === */
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--tekst-grijs);
+    border-radius: 9px;
+    padding: 9px 18px;
+    border: none !important;
+    background: transparent;
+    transition: all 0.15s ease;
+    letter-spacing: 0.2px;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    color: var(--blauw);
+    background: var(--grijs-licht) !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-accent) 100%) !important;
+    color: var(--wit) !important;
+    box-shadow: 0 2px 8px rgba(13,31,53,0.2);
+}
+
+/* === DATAFRAMES === */
+[data-testid="stDataFrame"] {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+    border: 1px solid var(--grijs-mid);
+}
+
+/* === SELECTBOX & INPUT === */
 [data-testid="stSelectbox"] > div > div {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     border-color: var(--grijs-mid) !important;
-    font-family: 'Inter', sans-serif;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--wit) !important;
+    box-shadow: 0 1px 4px rgba(13,31,53,0.06) !important;
 }
 
 [data-testid="stTextInput"] input {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
     border-color: var(--grijs-mid) !important;
-    font-family: 'Inter', sans-serif;
+    font-family: 'DM Sans', sans-serif;
+    box-shadow: 0 1px 4px rgba(13,31,53,0.06) !important;
 }
 
 /* === BUTTONS === */
@@ -190,114 +237,120 @@ h2, h3 {
     background: linear-gradient(135deg, var(--oranje) 0%, var(--oranje-licht) 100%);
     color: var(--wit);
     border: none;
-    border-radius: 8px;
-    font-family: 'Inter', sans-serif;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13px;
     padding: 10px 24px;
-    box-shadow: 0 4px 12px rgba(244,124,32,0.3);
+    box-shadow: 0 4px 16px rgba(244,124,32,0.25);
     transition: all 0.2s ease;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 [data-testid="stButton"] > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(244,124,32,0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(244,124,32,0.35);
 }
 
-/* === ALERTS & INFO === */
+[data-testid="stButton"] > button:active {
+    transform: translateY(0px);
+}
+
+/* === ALERTS === */
 [data-testid="stAlert"] {
-    border-radius: 10px;
-    font-family: 'Inter', sans-serif;
+    border-radius: 12px;
+    font-family: 'DM Sans', sans-serif;
+    border: none;
+    font-size: 14px;
 }
 
 /* === DIVIDER === */
 hr {
-    border-color: var(--grijs-mid) !important;
-    margin: 1.5rem 0 !important;
+    border: none !important;
+    border-top: 1px solid var(--grijs-mid) !important;
+    margin: 2rem 0 !important;
 }
 
-/* === CARD CONTAINERS === */
+/* === CARDS === */
 .card {
     background: var(--wit);
-    border-radius: 14px;
-    padding: 24px;
-    box-shadow: 0 2px 16px rgba(26,46,74,0.08);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: var(--card-shadow);
     margin-bottom: 1.5rem;
     border: 1px solid var(--grijs-mid);
+    transition: box-shadow 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: var(--card-shadow-hover);
 }
 
 .card-title {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 18px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
     font-weight: 700;
-    color: var(--blauw);
+    color: var(--tekst-grijs);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 2px;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 2px solid var(--oranje);
-    display: inline-block;
+    border-bottom: 1px solid var(--grijs-mid);
 }
 
-/* === RANGLIJST PODIUM === */
-.podium-row {
-    display: flex;
-    align-items: center;
-    padding: 12px 16px;
-    border-radius: 10px;
-    margin-bottom: 8px;
-    background: var(--wit);
-    box-shadow: 0 1px 6px rgba(26,46,74,0.06);
-    font-family: 'Inter', sans-serif;
-}
+/* === PODIUM === */
+.rank-1 { border-left: 4px solid #F59E0B; }
+.rank-2 { border-left: 4px solid #94A3B8; }
+.rank-3 { border-left: 4px solid #B45309; }
 
-.rank-1 { border-left: 4px solid #FFD700; }
-.rank-2 { border-left: 4px solid #C0C0C0; }
-.rank-3 { border-left: 4px solid #CD7F32; }
+/* === CAPTION / KLEINE TEKST === */
+[data-testid="stCaptionContainer"] {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--tekst-grijs);
+}
 
 /* === SPINNER === */
-[data-testid="stSpinner"] {
-    color: var(--oranje) !important;
-}
-
-/* === MOBIEL RESPONSIVE === */
-@media (max-width: 768px) {
-    .nav-header {
-        padding: 12px 16px 0 16px;
-    }
-    .nav-logo {
-        font-size: 18px;
-    }
-    h1 {
-        font-size: 1.8rem !important;
-    }
-    [data-testid="stTabs"] [data-baseweb="tab"] {
-        font-size: 11px;
-        padding: 6px 10px;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.5rem !important;
-    }
-}
+[data-testid="stSpinner"] { color: var(--oranje) !important; }
 
 /* === KOERS BADGE === */
 .koers-badge {
     display: inline-block;
-    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-licht) 100%);
+    background: var(--blauw);
     color: var(--wit);
-    padding: 4px 12px;
+    padding: 3px 10px;
     border-radius: 20px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    font-family: 'Inter', sans-serif;
+    font-family: 'DM Sans', sans-serif;
     letter-spacing: 0.5px;
     margin: 2px;
 }
 
 .oranje-badge {
-    background: linear-gradient(135deg, var(--oranje) 0%, var(--oranje-licht) 100%);
+    background: var(--oranje);
+}
+
+/* === FADE-IN ANIMATIE === */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.stApp > div:first-child {
+    animation: fadeInUp 0.4s ease forwards;
+}
+
+/* === MOBIEL === */
+@media (max-width: 768px) {
+    .nav-header { padding: 12px 16px 0 16px; }
+    .nav-logo { font-size: 20px; letter-spacing: 2px; }
+    h1 { font-size: 2rem !important; }
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        font-size: 11px;
+        padding: 7px 10px;
+    }
+    [data-testid="stMetricValue"] { font-size: 1.8rem !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -617,8 +670,8 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
 st.markdown("""
 <div class="nav-container">
     <div class="nav-header">
-        <div class="nav-logo">K1<span>x</span>Sam <span style="color:rgba(255,255,255,0.4);font-weight:300;">|</span> Klassiekerspel</div>
-        <div class="nav-season">🚴 Seizoen 2026</div>
+        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Klassiekerspel</div>
+        <div class="nav-season">🚴&nbsp;&nbsp;Seizoen 2026</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
