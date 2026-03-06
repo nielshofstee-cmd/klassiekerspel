@@ -283,19 +283,22 @@ h2, h3 {
     overflow: hidden;
     box-shadow: var(--card-shadow);
     border: 1px solid var(--grijs-mid);
+    background-color: #ffffff !important;
 }
 
-/* Alle tekst in tabellen donkerblauw + witte achtergrond (ook bij donkere modus OS) */
+[data-testid="stDataFrame"] > div,
+[data-testid="stDataFrame"] iframe {
+    background-color: #ffffff !important;
+}
+
+/* Tekst in tabellen donkerblauw (werkt bij niet-canvas rendering) */
 [data-testid="stDataFrame"] td,
 [data-testid="stDataFrame"] th,
 [data-testid="stDataFrame"] [class*="cell"],
-[data-testid="stDataFrame"] [class*="header"],
-[data-testid="stDataFrame"] span,
-[data-testid="stDataFrame"] div {
+[data-testid="stDataFrame"] [class*="header"] {
     color: var(--tekst-donker) !important;
     font-family: 'DM Sans', sans-serif !important;
     font-size: 13px !important;
-    background-color: #ffffff !important;
 }
 
 /* Header rij donkerblauw en vet */
@@ -312,13 +315,6 @@ h2, h3 {
 /* Afwisselende rijkleuren */
 [data-testid="stDataFrame"] tr:nth-child(even) td {
     background-color: #f5f8fc !important;
-}
-
-/* Tabel wrapper altijd wit */
-[data-testid="stDataFrame"] > div,
-[data-testid="stDataFrame"] iframe,
-[data-testid="stDataFrame"] [data-testid="StyledFullScreenFrame"] {
-    background-color: #ffffff !important;
 }
 
 /* === SELECTBOX & INPUT === */
@@ -577,24 +573,15 @@ hr {
         padding-right: 12px !important;
     }
 
-    /* Dataframe op mobiel altijd witte achtergrond */
-    [data-testid="stDataFrame"],
-    [data-testid="stDataFrame"] > div,
-    [data-testid="stDataFrame"] td,
-    [data-testid="stDataFrame"] th,
-    [data-testid="stDataFrame"] [class*="cell"],
-    [data-testid="stDataFrame"] [class*="header"],
-    [data-testid="stDataFrame"] span,
-    [data-testid="stDataFrame"] div {
+    /* Dataframe op mobiel */
+    [data-testid="stDataFrame"] {
         font-size: 12px;
         background-color: #ffffff !important;
-        color: var(--tekst-donker) !important;
     }
 
-    [data-testid="stDataFrame"] th,
-    [data-testid="stDataFrame"] [role="columnheader"] {
-        background-color: #e8eef6 !important;
-        color: var(--blauw) !important;
+    [data-testid="stDataFrame"] > div,
+    [data-testid="stDataFrame"] iframe {
+        background-color: #ffffff !important;
     }
 
     /* Kolommen op mobiel onder elkaar */
