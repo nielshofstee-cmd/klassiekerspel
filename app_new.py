@@ -1190,6 +1190,27 @@ with tab_admin:
             else:
                 st.write("Geen spelersdata gevonden.")
 
+        # Startlijsten statistieken - volle breedte eronder
+        st.divider()
+        df_startlijsten_check = read_sheet("startlijsten")
+        if not df_startlijsten_check.empty:
+            df_startlijsten_check.columns = [str(c).strip().lower() for c in df_startlijsten_check.columns]
+            totaal_startlijsten = len(df_startlijsten_check)
+            st.metric("Totaal aantal renners in startlijsten", totaal_startlijsten)
+            sl_counts = df_startlijsten_check.groupby('koers_naam')['rider'].count().reset_index()
+            sl_counts.columns = ['Koers', 'Aantal Renners op Startlijst']
+            # Sorteer op chronologische volgorde uit de koersen sheet
+            volgorde_admin = get_koersen_volgorde()
+            if volgorde_admin:
+                sl_counts['volgorde'] = sl_counts['Koers'].apply(
+                    lambda k: volgorde_admin.index(k) if k in volgorde_admin else 999
+                )
+                sl_counts = sl_counts.sort_values('volgorde').drop(columns='volgorde')
+            st.write("**Renners per koers op startlijst:**")
+            st.dataframe(sl_counts, use_container_width=True, hide_index=True)
+        else:
+            st.info("De startlijsten-database is nog leeg.")
+
         st.divider()
         
         col1, col2 = st.columns(2)
