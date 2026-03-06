@@ -887,14 +887,58 @@ with tab_klas:
         df_scores = pd.DataFrame(scores)
         tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
 
-        # Functie voor compacte weergave
-        def display_compact_df(df, rows_visible=12):
-            # Bereken hoogte: header (~35px) + (aantal rijen * ~35px)
-            calc_height = 36 + (rows_visible * 36) 
-            
+        # Bereken vorige stand (op één na laatste koers) voor pijltjes
+        def bereken_vorige_stand(df_scores_huidig, history_data, koersen_gehad):
+            if len(koersen_gehad) < 2:
+                return {}
+            # Puntentotaal tot en met één koers terug
+            vorige_koers_label = f"{(len(koersen_gehad)-1):02d}. {koersen_gehad[-2]}"
+            vorige = {}
+            for entry in history_data:
+                if entry['Koers'] == vorige_koers_label:
+                    vorige[entry['Speler']] = entry['Punten']
+            if not vorige:
+                return {}
+            # Rangschik op vorige stand
+            gesorteerd = sorted(vorige.items(), key=lambda x: x[1], reverse=True)
+            return {speler: i+1 for i, (speler, _) in enumerate(gesorteerd)}
+
+        def maak_trend_kolom(df_weergave, vorige_ranks):
+            trends = []
+            for i, row in df_weergave.iterrows():
+                speler = row['Deelnemer']
+                huidige_rank = list(df_weergave['Deelnemer']).index(speler) + 1
+                if speler in vorige_ranks:
+                    oud = vorige_ranks[speler]
+                    if huidige_rank < oud:
+                        trends.append("🟢 ▲")
+                    elif huidige_rank > oud:
+                        trends.append("🔴 ▼")
+                    else:
+                        trends.append("🔵 —")
+                else:
+                    trends.append("")
+            return trends
+
+        vorige_ranks = bereken_vorige_stand(df_scores, history_data, koersen_gehad)
+
+        # Functie voor compacte weergave zonder lege rijen, met trend kolom
+        def display_compact_df(df):
+            n_rijen = len(df)
+            # Exacte hoogte: header 38px + elke rij 35px
+            calc_height = 38 + (n_rijen * 35)
+
+            df_show = df[['Deelnemer', 'Totaal']].copy().reset_index(drop=True)
+            df_show.index += 1
+
+            # Voeg trend kolom toe als er vorige stands zijn
+            if vorige_ranks:
+                df_show.insert(0, '↕', maak_trend_kolom(df_show, vorige_ranks))
+
             st.dataframe(
-                df[['Deelnemer', 'Totaal']],
+                df_show,
                 column_config={
+                    "↕": st.column_config.TextColumn("↕", width=50),
                     "Deelnemer": st.column_config.TextColumn("Deelnemer", width="medium"),
                     "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
                 },
@@ -906,15 +950,12 @@ with tab_klas:
         with tab1:
             st.subheader("Algemeen Klassement")
             df_alg = df_scores.sort_values('Totaal', ascending=False).reset_index(drop=True)
-            df_alg.index += 1
-            # Hier roepen we de functie aan
-            display_compact_df(df_alg, rows_visible=12)
+            display_compact_df(df_alg)
 
         def toon_poule_tabel(poule_naam):
             mask = df_scores['Poules'].apply(lambda x: poule_naam in x)
             df_p = df_scores[mask].sort_values('Totaal', ascending=False).reset_index(drop=True)
             if not df_p.empty:
-                df_p.index += 1
                 display_compact_df(df_p)
             else:
                 st.info(f"Geen spelers gevonden voor {poule_naam}.")
@@ -1186,19 +1227,21 @@ with tab_team:
         df_mijn_team = pd.DataFrame(r_data).sort_values("Totaal Punten", ascending=False)
 
         # Weergave met aangepaste kolombreedte en tabelhoogte
+        n_renners = len(df_mijn_team)
+        team_height = 38 + (n_renners * 35)
         st.dataframe(
             df_mijn_team,
             column_config={
                 "Renner": st.column_config.TextColumn("Renner", width="medium"),
                 "Totaal Punten": st.column_config.NumberColumn(
                     "Totaal Punten",
-                    width="medium",  # Iets breder gemaakt zodat de titel past
+                    width="medium",
                     format="%d"
                 ),
             },
             hide_index=True,
             use_container_width=False,
-            height=921  # Verhoog dit getal (pixels) om meer rijen tegelijk te tonen
+            height=team_height
         )
         
 
