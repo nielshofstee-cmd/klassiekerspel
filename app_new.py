@@ -624,6 +624,7 @@ if (not _df_koersen_init.empty
         str(row['koers_naam']).strip(): str(row['deadline']).strip()
         for _, row in _df_koersen_init.iterrows()
         if pd.notna(row['koers_naam']) and pd.notna(row['deadline'])
+           and str(row['deadline']).strip() != ""
     } or _KOERS_DATA_FALLBACK
 else:
     KOERS_DATA = _KOERS_DATA_FALLBACK
