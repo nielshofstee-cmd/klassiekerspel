@@ -972,7 +972,7 @@ with tab_klas:
         tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
 
         # Bereken vorige stand (op één na laatste koers) voor pijltjes
-        def bereken_vorige_stand(df_scores_huidig, history_data, koersen_gehad):
+        def bereken_vorige_stand(history_data, koersen_gehad, spelers=None):
             if len(koersen_gehad) < 2:
                 return {}
             # Puntentotaal tot en met één koers terug
@@ -980,10 +980,11 @@ with tab_klas:
             vorige = {}
             for entry in history_data:
                 if entry['Koers'] == vorige_koers_label:
-                    vorige[entry['Speler']] = entry['Punten']
+                    if spelers is None or entry['Speler'] in spelers:
+                        vorige[entry['Speler']] = entry['Punten']
             if not vorige:
                 return {}
-            # Rangschik op vorige stand
+            # Rangschik op vorige stand (alleen binnen de opgegeven spelers)
             gesorteerd = sorted(vorige.items(), key=lambda x: x[1], reverse=True)
             return {speler: i+1 for i, (speler, _) in enumerate(gesorteerd)}
 
@@ -1005,10 +1006,8 @@ with tab_klas:
                     trends.append("")
             return trends
 
-        vorige_ranks = bereken_vorige_stand(df_scores, history_data, koersen_gehad)
-
         # Functie voor compacte weergave zonder lege rijen, met trend kolom
-        def display_compact_df(df):
+        def display_compact_df(df, vorige_ranks):
             n_rijen = len(df)
             calc_height = TABLE_HEADER_HEIGHT + (n_rijen * TABLE_ROW_HEIGHT)
 
@@ -1034,13 +1033,16 @@ with tab_klas:
         with tab1:
             st.subheader("Algemeen Klassement")
             df_alg = df_scores.sort_values('Totaal', ascending=False).reset_index(drop=True)
-            display_compact_df(df_alg)
+            vorige_ranks_alg = bereken_vorige_stand(history_data, koersen_gehad)
+            display_compact_df(df_alg, vorige_ranks_alg)
 
         def toon_poule_tabel(poule_naam):
             mask = df_scores['Poules'].apply(lambda x: poule_naam in x)
             df_p = df_scores[mask].sort_values('Totaal', ascending=False).reset_index(drop=True)
             if not df_p.empty:
-                display_compact_df(df_p)
+                spelers_in_poule = set(df_p['Deelnemer'])
+                vorige_ranks_poule = bereken_vorige_stand(history_data, koersen_gehad, spelers=spelers_in_poule)
+                display_compact_df(df_p, vorige_ranks_poule)
             else:
                 st.info(f"Geen spelers gevonden voor {poule_naam}.")
 
