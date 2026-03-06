@@ -44,7 +44,7 @@ st.markdown("""
 
 /* === ACHTERGROND === */
 .stApp {
-    background: linear-gradient(160deg, #fff8f2 0%, #fff3e8 50%, #fdeede 100%);
+    background: linear-gradient(160deg, #ccdaee 0%, #b8cfe8 50%, #a0bfde 100%);
     background-attachment: fixed;
     font-family: 'DM Sans', sans-serif;
     min-height: 100vh;
