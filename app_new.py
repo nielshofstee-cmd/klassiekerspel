@@ -273,6 +273,34 @@ h2, h3 {
     border: 1px solid var(--grijs-mid);
 }
 
+/* Alle tekst in tabellen donkerblauw */
+[data-testid="stDataFrame"] td,
+[data-testid="stDataFrame"] th,
+[data-testid="stDataFrame"] [class*="cell"],
+[data-testid="stDataFrame"] [class*="header"],
+[data-testid="stDataFrame"] span,
+[data-testid="stDataFrame"] div {
+    color: var(--tekst-donker) !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 13px !important;
+}
+
+/* Header rij donkerblauw en vet */
+[data-testid="stDataFrame"] th,
+[data-testid="stDataFrame"] [role="columnheader"] {
+    background-color: #e8eef6 !important;
+    font-weight: 700 !important;
+    color: var(--blauw) !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Afwisselende rijkleuren */
+[data-testid="stDataFrame"] tr:nth-child(even) td {
+    background-color: #f5f8fc !important;
+}
+
 /* === SELECTBOX & INPUT === */
 [data-testid="stSelectbox"] > div > div {
     border-radius: 10px !important;
@@ -1042,27 +1070,23 @@ with tab_uitslag:
             df_koers_punten = pd.DataFrame(data).sort_values("Punten", ascending=False).reset_index(drop=True)
             df_koers_punten.index += 1
             
+            n_punten = len(df_koers_punten)
+            punten_height = 38 + (n_punten * 38)
             st.dataframe(
-            df_koers_punten,
-            column_config={
-                "Deelnemer": st.column_config.TextColumn(
-                    "Deelnemer",
-                    width="medium"
-                ),
-                "Punten": st.column_config.NumberColumn(
-                    "Punten",
-                    width="small",
-                    format="%d"
-                ),
-                "Scorende Renners": st.column_config.TextColumn(
-                    "Scorende Renners",
-                    width=2500,  # FORCEER een enorme breedte in pixels
-                    help="Scroll naar rechts om alle renners te zien"
-                ),
-            },
-            hide_index=False,
-            use_container_width=True
-        )
+                df_koers_punten,
+                column_config={
+                    "Deelnemer": st.column_config.TextColumn("Deelnemer", width="medium"),
+                    "Punten": st.column_config.NumberColumn("Punten", width="small", format="%d"),
+                    "Scorende Renners": st.column_config.TextColumn(
+                        "Scorende Renners",
+                        width=2500,
+                        help="Scroll naar rechts om alle renners te zien"
+                    ),
+                },
+                hide_index=False,
+                use_container_width=True,
+                height=punten_height
+            )
         else:
             st.info("Geen gegevens beschikbaar voor deze koers.")
 
@@ -1195,15 +1219,23 @@ with tab_matrix:
         # Styling: Kleur de cellen met punten groen, maak DNF/OTL/DSQ grijs
         def style_matrix(v):
             if isinstance(v, (int, float)) and v > 0:
-                return 'color: #155724; background-color: #d4edda; font-weight: bold;'
+                return 'color: #0d1f35; background-color: #c8f0d4; font-weight: 700; font-size: 13px;'
             elif v in ["DNF", "OTL", "DSQ"]:
-                return 'color: #721c24; background-color: #f8d7da; font-style: italic;'
+                return 'color: #7f1d1d; background-color: #fecaca; font-weight: 600; font-size: 12px;'
             elif v == "-":
-                return 'color: #ccc;'
+                return 'color: #0d1f35; font-size: 13px;'
+            elif isinstance(v, (int, float)) and v == 0:
+                return 'color: #0d1f35; font-size: 13px;'
             else:
-                return 'color: #999;'
+                return 'color: #0d1f35; font-size: 13px; font-weight: 600;'
 
-        st.dataframe(df_matrix.style.applymap(style_matrix), use_container_width=True)
+        n_matrix_rows = len(df_matrix)
+        matrix_height = 38 + (n_matrix_rows * 38)
+        st.dataframe(
+            df_matrix.style.applymap(style_matrix),
+            use_container_width=True,
+            height=matrix_height
+        )
 
 # =============================================
 # 4. MIJN TEAM
