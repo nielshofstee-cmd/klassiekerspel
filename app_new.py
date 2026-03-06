@@ -42,21 +42,77 @@ st.markdown("""
     --card-shadow-hover: 0 8px 32px rgba(13,31,53,0.16);
 }
 
-/* === ACHTERGROND MET SUBTIELE TEXTUUR === */
+/* === ACHTERGROND === */
 .stApp {
-    background-color: var(--grijs-licht);
-    background-image:
-        radial-gradient(ellipse at 20% 0%, rgba(30,87,153,0.06) 0%, transparent 60%),
-        radial-gradient(ellipse at 80% 100%, rgba(244,124,32,0.04) 0%, transparent 60%);
+    background: linear-gradient(160deg, #fff8f2 0%, #fff3e8 50%, #fdeede 100%);
+    background-attachment: fixed;
     font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
 }
+
+/* Herstel tekst kleuren voor lichte achtergrond */
+h1 { color: var(--blauw) !important; }
+h2, h3 { color: var(--blauw) !important; }
+
+[data-testid="stMetric"] {
+    background: var(--wit) !important;
+    border: 1px solid rgba(244,124,32,0.15) !important;
+    border-top: 3px solid var(--oranje) !important;
+    box-shadow: 0 4px 24px rgba(244,124,32,0.08) !important;
+}
+
+[data-testid="stMetricLabel"] { color: var(--tekst-grijs) !important; }
+[data-testid="stMetricValue"] { color: var(--blauw) !important; }
+
+[data-testid="stDataFrame"] {
+    border: 1px solid rgba(244,124,32,0.12) !important;
+    box-shadow: 0 4px 24px rgba(244,124,32,0.06) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: var(--wit) !important;
+    border: 1px solid rgba(244,124,32,0.15) !important;
+    box-shadow: 0 4px 16px rgba(244,124,32,0.08) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    color: var(--tekst-grijs) !important;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+    background: rgba(244,124,32,0.06) !important;
+    color: var(--blauw) !important;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+    background: linear-gradient(135deg, var(--blauw) 0%, var(--blauw-accent) 100%) !important;
+    color: var(--wit) !important;
+}
+
+[data-testid="stSelectbox"] > div > div {
+    background: var(--wit) !important;
+    border-color: rgba(244,124,32,0.2) !important;
+}
+
+[data-testid="stTextInput"] input {
+    background: var(--wit) !important;
+    border-color: rgba(244,124,32,0.2) !important;
+}
+
+hr { border-top: 1px solid rgba(244,124,32,0.12) !important; }
+
+[data-testid="stCaptionContainer"] { color: var(--tekst-grijs) !important; }
 
 /* === VERBERG STANDAARD SIDEBAR === */
 [data-testid="stSidebar"] { display: none !important; }
 
-/* === VERBERG STREAMLIT CHROME === */
-header[data-testid="stHeader"] { background: var(--blauw) !important; }
-#MainMenu, footer, header .stToolbar { visibility: hidden; }
+/* === VERBERG STREAMLIT CHROME VOLLEDIG === */
+header[data-testid="stHeader"] {
+    display: none !important;
+}
+#MainMenu, footer { visibility: hidden; }
+.stAppDeployButton { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
 
 /* === TOPBALK NAVIGATIE === */
 .nav-container {
@@ -74,7 +130,8 @@ header[data-testid="stHeader"] { background: var(--blauw) !important; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 28px 0 28px;
+    padding: 0 28px;
+    height: 56px;
 }
 
 .nav-logo {
