@@ -540,6 +540,8 @@ import os, json
 
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
 # Credentials laden: via environment variable (Railway) of lokaal JSON bestand
 google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
 if google_creds_env:
@@ -1421,7 +1423,7 @@ with tab_admin:
     # --- WACHTWOORD BEVEILIGING ---
     poging = st.text_input("Voer het admin-wachtwoord in:", type="password")
     
-    if poging == "kankerbuffel":
+    if ADMIN_PASSWORD and poging == ADMIN_PASSWORD:
         st.success("Wachtwoord correct. Welkom beheerder.")
         
         # --- STATISTIEKEN SECTIE ---
