@@ -9,9 +9,13 @@ import time
 import random
 import cloudscraper
 
-_cs = cloudscraper.create_scraper(
-    browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
-)
+def _maak_scraper():
+    return cloudscraper.create_scraper(
+        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True},
+        delay=10
+    )
+
+_cs = _maak_scraper()
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
@@ -711,13 +715,95 @@ def get_standaard_koers_index(koers_lijst):
     return best_i
 
 
+# --- HANDMATIGE UITSLAG INVOER (fallback als scrapen mislukt) ---
+def _handmatige_uitslag_opslaan(koers_naam, tekst):
+    try:
+        standard_cols = ['koers_naam', 'rank', 'rider', 'team']
+        toegestane_statussen = {"DNF", "OTL", "DSQ", "DNS"}
+        temp_data = []
+        for regel in tekst.strip().splitlines():
+            regel = regel.strip()
+            if not regel:
+                continue
+            delen = [d.strip() for d in regel.split(',')]
+            if len(delen) < 2:
+                continue
+            rank = delen[0].upper()
+            rider_raw = delen[1] if len(delen) > 1 else ''
+            team = delen[2] if len(delen) > 2 else ''
+            rider = ' '.join(w.capitalize() for w in rider_raw.split())
+            is_getal = rank.isdigit()
+            is_status = rank in toegestane_statussen
+            if rider and (is_getal or is_status):
+                temp_data.append({"koers_naam": koers_naam, "rank": rank, "rider": rider, "team": team})
+
+        if not temp_data:
+            return False, "Geen geldige regels gevonden. Controleer het formaat: rank,rider,team"
+
+        existing_df = read_sheet("uitslagen")
+        if not existing_df.empty:
+            other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
+        else:
+            other_races_df = pd.DataFrame(columns=standard_cols)
+
+        new_df = pd.DataFrame(temp_data)
+        final_df = pd.concat([other_races_df, new_df], ignore_index=True)[standard_cols]
+
+        ws_u = sh.worksheet("uitslagen")
+        ws_u.clear()
+        ws_u.update([standard_cols] + final_df.values.tolist())
+        st.cache_data.clear()
+        return True, f"Succes! {len(temp_data)} renners handmatig opgeslagen voor {koers_naam}."
+    except Exception as e:
+        return False, f"Fout bij opslaan: {str(e)}"
+
+
 # --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
+def _pcs_get(url, max_pogingen=3):
+    """Haal een URL op met retry-logica en wisselende user-agents."""
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ]
+    extra_headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.google.com/",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+    }
+    wacht = 2
+    laatste_fout = None
+    for poging in range(max_pogingen):
+        try:
+            scraper = _maak_scraper()
+            scraper.headers.update({"User-Agent": user_agents[poging % len(user_agents)]})
+            scraper.headers.update(extra_headers)
+            time.sleep(random.uniform(2, 5) + wacht * poging)
+            resp = scraper.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            laatste_fout = e
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 403:
+                # 403 = geblokkeerd, wacht langer en probeer opnieuw
+                time.sleep(wacht * (poging + 1))
+                continue
+            raise
+    raise laatste_fout
+
+
 def scrape_en_save(koers_naam, url):
     try:
         # Haal het relatieve pad op uit de volledige URL
         relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
-        time.sleep(random.uniform(2, 4))
-        resp = _cs.get(url, timeout=30)
+        resp = _pcs_get(url)
         resp.raise_for_status()
         stage = Stage(relatief_pad, html=resp.text, update_html=False)
         resultaten = stage.results()
@@ -784,8 +870,7 @@ def scrape_startlijst_en_save(koers_naam, url):
         if not startlist_url.endswith('/startlist'):
             startlist_url = startlist_url + '/startlist'
         relatief_pad = startlist_url.replace("https://www.procyclingstats.com/", "").strip("/")
-        time.sleep(random.uniform(2, 4))
-        resp = _cs.get(startlist_url, timeout=30)
+        resp = _pcs_get(startlist_url)
         resp.raise_for_status()
         startlist = RaceStartlist(relatief_pad, html=resp.text, update_html=False)
         renners = startlist.startlist()
@@ -1604,6 +1689,31 @@ with tab_admin:
                         st.success(f"✅ {msg}")
                     else:
                         st.error(f"❌ {msg}")
+                        st.info("💡 Scrapen mislukt? Gebruik de handmatige invoer hieronder.")
+
+                st.write("---")
+
+                # Handmatige uitslag-invoer als fallback (bijv. als IP geblokkeerd)
+                with st.expander("✍️ Uitslag handmatig invoeren (fallback bij blokkade)"):
+                    st.markdown("""
+Plak de uitslag hieronder in het volgende formaat (één renner per regel):
+```
+1,Mathieu Van Der Poel,Alpecin-Deceuninck
+2,Tom Pidcock,Ineos Grenadiers
+3,Wout Van Aert,Visma-Lease a Bike
+DNF,Tadej Pogacar,UAE Team Emirates
+```
+**Kolommen:** `rank,rider,team` — scheidingsteken is een komma.
+""")
+                    handmatig_koers = st.selectbox("Koers:", ["---"] + koers_lijst, key="handmatig_koers")
+                    handmatig_tekst = st.text_area("Plak hier de uitslag:", height=300, key="handmatig_tekst",
+                                                   placeholder="1,Mathieu Van Der Poel,Alpecin-Deceuninck\n2,Tom Pidcock,Ineos Grenadiers\n...")
+                    if st.button("Sla handmatige uitslag op") and handmatig_koers != "---" and handmatig_tekst.strip():
+                        ok, msg = _handmatige_uitslag_opslaan(handmatig_koers, handmatig_tekst)
+                        if ok:
+                            st.success(f"✅ {msg}")
+                        else:
+                            st.error(f"❌ {msg}")
                 
                 st.write("---")
                 
