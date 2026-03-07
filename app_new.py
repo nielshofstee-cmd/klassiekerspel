@@ -1500,8 +1500,6 @@ with tab_admin:
     
     # --- WACHTWOORD BEVEILIGING ---
     poging = st.text_input("Voer het admin-wachtwoord in:", type="password")
-    st.caption(f"DEBUG: wachtwoord geladen = {'ja' if ADMIN_PASSWORD else 'NEE, leeg!'} | lengte = {len(ADMIN_PASSWORD)}")
-
     if ADMIN_PASSWORD and poging == ADMIN_PASSWORD:
         st.success("Wachtwoord correct. Welkom beheerder.")
         
