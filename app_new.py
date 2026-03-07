@@ -8,6 +8,10 @@ from bs4 import BeautifulSoup
 import time
 import random
 import cloudscraper
+
+_cs = cloudscraper.create_scraper(
+    browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
+)
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
@@ -713,7 +717,9 @@ def scrape_en_save(koers_naam, url):
         # Haal het relatieve pad op uit de volledige URL
         relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
         time.sleep(random.uniform(2, 4))
-        stage = Stage(relatief_pad)
+        resp = _cs.get(url, timeout=30)
+        resp.raise_for_status()
+        stage = Stage(relatief_pad, html=resp.text, update_html=False)
         resultaten = stage.results()
         if not resultaten:
             return False, "Geen resultaten gevonden via procyclingstats package."
@@ -779,7 +785,9 @@ def scrape_startlijst_en_save(koers_naam, url):
             startlist_url = startlist_url + '/startlist'
         relatief_pad = startlist_url.replace("https://www.procyclingstats.com/", "").strip("/")
         time.sleep(random.uniform(2, 4))
-        startlist = RaceStartlist(relatief_pad)
+        resp = _cs.get(startlist_url, timeout=30)
+        resp.raise_for_status()
+        startlist = RaceStartlist(relatief_pad, html=resp.text, update_html=False)
         renners = startlist.startlist()
         if not renners:
             return False, "Geen startlijst gevonden via procyclingstats package."
