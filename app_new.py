@@ -687,6 +687,30 @@ else:
     KOERS_DATA = _KOERS_DATA_FALLBACK
 
 
+def get_standaard_koers_index(koers_lijst):
+    """Geeft de index van de eerstvolgende (toekomstige) koers terug.
+    Als alle koersen al voorbij zijn, de meest recent afgelopen koers.
+    Valt terug op 0 als er geen deadlines bekend zijn."""
+    nu = datetime.now(_AMS)
+    toekomstig = []
+    verleden = []
+    for i, k in enumerate(koers_lijst):
+        if k in KOERS_DATA:
+            try:
+                dt = datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                if dt >= nu:
+                    toekomstig.append((dt, i))
+                else:
+                    verleden.append((dt, i))
+            except ValueError:
+                pass
+    if toekomstig:
+        return min(toekomstig, key=lambda x: x[0])[1]
+    if verleden:
+        return max(verleden, key=lambda x: x[0])[1]
+    return 0
+
+
 # --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
 def scrape_en_save(koers_naam, url):
     try:
@@ -1071,7 +1095,8 @@ with tab_uitslag:
     if not u_all.empty:
         volgorde = koersen_volgorde
         koers_opties = [k for k in volgorde if k in u_all['koers_naam'].unique()]
-        koers = st.selectbox("Selecteer een koers:", koers_opties if koers_opties else u_all['koers_naam'].unique())
+        _ul = koers_opties if koers_opties else list(u_all['koers_naam'].unique())
+        koers = st.selectbox("Selecteer een koers:", _ul, index=get_standaard_koers_index(_ul))
         
         st.subheader(f"Officiële Uitslag: {koers}")
         top_uitslag = u_all[u_all['koers_naam'] == koers].copy()
@@ -1172,7 +1197,7 @@ with tab_startlijst:
         if not koersen_sl_gesorteerd:
             st.info("Geen koersen gevonden in de startlijsten database.")
         else:
-            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, key="sl_koers_view")
+            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, index=get_standaard_koers_index(koersen_sl_gesorteerd), key="sl_koers_view")
 
             koers_df = sl_all[sl_all['koers_naam'] == gekozen_koers].copy()
 
@@ -1352,7 +1377,8 @@ with tab_captains:
                 
                 # --- SECTIE 1: CAPTAINS INSTELLEN ---
                 st.subheader("📝 Captains Instellen")
-                koers_keuze = st.selectbox("Voor welke koers?", list(KOERS_DATA.keys()))
+                _captain_koersen = list(KOERS_DATA.keys())
+                koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_standaard_koers_index(_captain_koersen))
                 
                 # Check of koers al gestart is
                 deadline_str = KOERS_DATA[koers_keuze]
@@ -1453,7 +1479,8 @@ with tab_captains:
                         st.info("Je hebt nog geen captains ingesteld.")
 
                 with tab_alle:
-                    bekijk_koers = st.selectbox("Bekijk captains voor:", list(KOERS_DATA.keys()), key="view_others")
+                    _alle_koersen = list(KOERS_DATA.keys())
+                    bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_standaard_koers_index(_alle_koersen), key="view_others")
                     nu = datetime.now(_AMS)
                     start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
 
