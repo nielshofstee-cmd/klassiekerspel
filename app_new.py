@@ -598,7 +598,7 @@ hr {
 # --- DATABASE CONFIGURATIE & VERBINDING ---
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or st.secrets.get("ADMIN_PASSWORD", "")
 
 # Credentials laden: via environment variable (Railway) of lokaal JSON bestand
 google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
