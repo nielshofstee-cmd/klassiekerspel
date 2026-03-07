@@ -991,12 +991,13 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
             except ValueError:
                 rank_int = 999 # Voor DNF/OTL/DSQ
             
-            # Team punten logica (werkt nu ook voor DNF, want rt is bekend)
+            # Team punten logica: top-3 finishers krijgen GEEN teampunten
             punten_team = 0
-            if rt:
-                if t1 and rt == t1 and rank != "1" and rank != 1: punten_team += 30
-                if t2 and rt == t2 and rank != "2" and rank != 2: punten_team += 20
-                if t3 and rt == t3 and rank != "3" and rank != 3: punten_team += 10
+            top3_renner = str(rank) in {"1", "2", "3"}
+            if rt and not top3_renner:
+                if t1 and rt == t1: punten_team += 30
+                if t2 and rt == t2: punten_team += 20
+                if t3 and rt == t3: punten_team += 10
             
             subtotaal = punten_plek + punten_team
             totaal += subtotaal
