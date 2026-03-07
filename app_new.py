@@ -688,27 +688,20 @@ else:
 
 
 def get_standaard_koers_index(koers_lijst):
-    """Geeft de index van de eerstvolgende (toekomstige) koers terug.
-    Als alle koersen al voorbij zijn, de meest recent afgelopen koers.
-    Valt terug op 0 als er geen deadlines bekend zijn."""
+    """Geeft de index van de koers waarvan de deadlinedatum het dichtst bij vandaag ligt.
+    Zo wordt een race van vandaag (deadline al voorbij) verkozen boven een race van morgen."""
     nu = datetime.now(_AMS)
-    toekomstig = []
-    verleden = []
+    best_i, best_delta = 0, None
     for i, k in enumerate(koers_lijst):
         if k in KOERS_DATA:
             try:
                 dt = datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
-                if dt >= nu:
-                    toekomstig.append((dt, i))
-                else:
-                    verleden.append((dt, i))
+                delta = abs((dt - nu).total_seconds())
+                if best_delta is None or delta < best_delta:
+                    best_delta, best_i = delta, i
             except ValueError:
                 pass
-    if toekomstig:
-        return min(toekomstig, key=lambda x: x[0])[1]
-    if verleden:
-        return max(verleden, key=lambda x: x[0])[1]
-    return 0
+    return best_i
 
 
 # --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
