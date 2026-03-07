@@ -12,6 +12,9 @@ from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+_AMS = ZoneInfo("Europe/Amsterdam")
 from procyclingstats import Stage, RaceStartlist
 
 
@@ -1353,8 +1356,8 @@ with tab_captains:
                 
                 # Check of koers al gestart is
                 deadline_str = KOERS_DATA[koers_keuze]
-                deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M")
-                is_gestart = datetime.now() >= deadline_dt
+                deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                is_gestart = datetime.now(_AMS) >= deadline_dt
 
                 huidige_keuze = k_all[(k_all['speler_naam'] == naam) & (k_all['koers_naam'] == koers_keuze)]
                 if not huidige_keuze.empty:
@@ -1451,8 +1454,8 @@ with tab_captains:
 
                 with tab_alle:
                     bekijk_koers = st.selectbox("Bekijk captains voor:", list(KOERS_DATA.keys()), key="view_others")
-                    nu = datetime.now()
-                    start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M")
+                    nu = datetime.now(_AMS)
+                    start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
 
                     if nu < start_tijd:
                         st.info(f"🤫 De captains voor **{bekijk_koers}** blijven geheim tot de start om {start_tijd.strftime('%H:%M')} uur.")
