@@ -1139,11 +1139,11 @@ with tab_klas:
                 df_show,
                 column_config={
                     "↕": st.column_config.TextColumn("↕", width=50),
-                    "Deelnemer": st.column_config.TextColumn("Deelnemer", width="medium"),
+                    "Deelnemer": st.column_config.TextColumn("Deelnemer"),
                     "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
                 },
                 hide_index=False,
-                use_container_width=False,
+                use_container_width=True,
                 height=calc_height
             )
 
@@ -1438,15 +1438,11 @@ with tab_team:
         st.dataframe(
             df_mijn_team,
             column_config={
-                "Renner": st.column_config.TextColumn("Renner", width="medium"),
-                "Totaal Punten": st.column_config.NumberColumn(
-                    "Totaal Punten",
-                    width="medium",
-                    format="%d"
-                ),
+                "Renner": st.column_config.TextColumn("Renner"),
+                "Totaal Punten": st.column_config.NumberColumn("Totaal Punten", width="small", format="%d"),
             },
             hide_index=True,
-            use_container_width=False,
+            use_container_width=True,
             height=team_height
         )
         
