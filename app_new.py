@@ -1054,36 +1054,40 @@ with tab_klas:
 
         if 'subpoule' not in s_all.columns: s_all['subpoule'] = ""
         history_data, scores = [], []
-        
+        laatste_koers = koersen_gehad[-1] if koersen_gehad else None
+
         with st.spinner('Klassement berekenen...'):
             for speler in sorted(s_all['speler_naam'].unique()):
                 speler_rows = s_all[s_all['speler_naam'] == speler].copy()
                 poule_val = speler_rows['subpoule'].iloc[0] if not speler_rows['subpoule'].empty else ""
                 poule_lijst = [p.strip() for p in str(poule_val).split(",")] if poule_val else []
-                
+
                 cumulatief = 0
+                laatste_score = 0
                 for k in koersen_gehad:
                     koers_datum_str = KOERS_DATA[k].split(" ")[0]
                     k_dt = pd.to_datetime(koers_datum_str)
 
                     mask = (
-                        (pd.to_datetime(speler_rows['vanaf_datum']) <= k_dt) & 
+                        (pd.to_datetime(speler_rows['vanaf_datum']) <= k_dt) &
                         (
-                            (speler_rows['tot_datum'].isna()) | 
-                            (speler_rows['tot_datum'] == "") | 
+                            (speler_rows['tot_datum'].isna()) |
+                            (speler_rows['tot_datum'] == "") |
                             (pd.to_datetime(speler_rows['tot_datum']) > k_dt)
                         )
                     )
-                    
+
                     mr_voor_deze_koers = speler_rows[mask]['renner_naam'].tolist()
                     koers_score, _ = bereken_volledige_score(speler, k, u_all, k_all, mr_voor_deze_koers)
                     cumulatief += koers_score
-                    
+                    if k == laatste_koers:
+                        laatste_score = int(koers_score)
+
                     koers_idx = koersen_gehad.index(k) + 1
                     koers_label = f"{koers_idx:02d}. {k}"
                     history_data.append({"Koers": koers_label, "Speler": speler, "Punten": int(cumulatief)})
-                
-                scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Poules": poule_lijst})
+
+                scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Laatste": laatste_score, "Poules": poule_lijst})
 
         df_scores = pd.DataFrame(scores)
         tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
@@ -1131,17 +1135,23 @@ with tab_klas:
             df_show = df[['Deelnemer', 'Totaal']].copy().reset_index(drop=True)
             df_show.index += 1
 
+            # Voeg laatste koers kolom in vóór Totaal
+            col_config = {
+                "Deelnemer": st.column_config.TextColumn("Deelnemer"),
+                "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
+            }
+            if laatste_koers and 'Laatste' in df.columns:
+                df_show.insert(len(df_show.columns) - 1, laatste_koers, df['Laatste'].values)
+                col_config[laatste_koers] = st.column_config.NumberColumn(laatste_koers, width="small", format="%d")
+
             # Voeg trend kolom toe als er vorige stands zijn
             if vorige_ranks:
                 df_show.insert(0, '↕', maak_trend_kolom(df_show, vorige_ranks))
+                col_config["↕"] = st.column_config.TextColumn("↕", width=50)
 
             st.dataframe(
                 df_show,
-                column_config={
-                    "↕": st.column_config.TextColumn("↕", width=50),
-                    "Deelnemer": st.column_config.TextColumn("Deelnemer"),
-                    "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
-                },
+                column_config=col_config,
                 hide_index=False,
                 use_container_width=True,
                 height=calc_height
