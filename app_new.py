@@ -4,6 +4,7 @@ import unicodedata
 import streamlit as st
 import pandas as pd
 import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 import time
 import random
@@ -778,32 +779,19 @@ def _handmatige_uitslag_opslaan(koers_naam, tekst):
         return False, f"Fout bij opslaan: {str(e)}"
 
 
-# --- SCRAPER: requests + BeautifulSoup ---
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-]
+# --- SCRAPER: cloudscraper (Cloudflare bypass) + BeautifulSoup parsing ---
 
 def _pcs_get(url, max_pogingen=3):
-    """Haal een URL op via requests met retry-logica en wisselende user-agents."""
+    """Haal een PCS-URL op via cloudscraper (omzeilt Cloudflare) met retry-logica."""
     laatste_fout = None
     for poging in range(max_pogingen):
         try:
-            session = requests.Session()
-            session.headers.update({
-                "User-Agent": _USER_AGENTS[poging % len(_USER_AGENTS)],
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Referer": "https://www.procyclingstats.com/",
-                "DNT": "1",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1",
-            })
             if poging > 0:
-                time.sleep(random.uniform(2, 4) * poging)
-            resp = session.get(url, timeout=30)
+                time.sleep(random.uniform(3, 6) * poging)
+            scraper = cloudscraper.create_scraper(
+                browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
+            )
+            resp = scraper.get(url, timeout=30)
             resp.raise_for_status()
             return resp
         except Exception as e:
@@ -812,186 +800,204 @@ def _pcs_get(url, max_pogingen=3):
     raise laatste_fout
 
 
-# --- VERBETERDE SCRAPER LOGICA ---
+# --- SCRAPER LOGICA ---
 
 def scrape_en_save(koers_naam, url):
+    """
+    Scrapt de uitslag van een PCS result-pagina.
+    PCS HTML-structuur (results):
+      <table class="results basic moblist10 ...">
+        <tbody>
+          <tr>
+            <td><span>1</span></td>           <!-- rank, soms in span -->
+            <td>...</td>                       <!-- vlag -->
+            <td><a href="rider/...">NAAM</a></td>
+            <td><a href="team/...">TEAM</a></td>
+            <td>3:03:15</td>
+            ...
+          </tr>
+          <!-- DNF/OTL/DSQ rijen: rank-cel bevat de tekst direct -->
+        </tbody>
+      </table>
+    """
     try:
-        full_url = url if url.endswith('/') else url + '/'
+        full_url = url.rstrip('/') + '/'
         response = _pcs_get(full_url)
-        if response.status_code != 200:
-            return False, f"PCS gaf error {response.status_code}"
 
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Zoek de juiste tabel
-        table = soup.find('table', class_='results')
+
+        # Anti-bot check: als Cloudflare challenge wordt teruggegeven
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
+
+        # Zoek de resultatentabel — PCS gebruikt class 'results' (soms met extra klassen)
+        table = soup.find('table', class_=lambda c: c and 'results' in c)
         if not table:
-            table = soup.find('table', class_='basic')
-            
+            # Fallback: elke tabel met een tbody die rider-links bevat
+            for t in soup.find_all('table'):
+                if t.find('a', href=lambda h: h and 'rider/' in h):
+                    table = t
+                    break
+
         if not table:
-            return False, "Geen uitslag tabel gevonden."
+            return False, "Geen uitslag tabel gevonden op deze pagina."
 
         data = []
-        rows = table.find('tbody').find_all('tr') if table.find('tbody') else table.find_all('tr')
-        
-        for row in rows:
+        tbody = table.find('tbody') or table
+        for row in tbody.find_all('tr'):
             cols = row.find_all('td')
             if len(cols) < 2:
                 continue
 
-            # 1. Rank (altijd de eerste kolom)
-            rank = cols[0].text.strip()
-            
-            # 2. Zoek de Renner en Team op basis van de links (<a>)
-            # Dit is veel betrouwbaarder dan kolom-index (0,1,2)
+            # Rank: PCS zet het getal soms in een <span> binnen de eerste <td>
+            rank_td = cols[0]
+            span = rank_td.find('span')
+            rank = (span.text if span else rank_td.text).strip()
+
+            # Renner: zoek link met 'rider/' in href
             rider = ""
             team = ""
-            
-            links = row.find_all('a', href=True)
-            for link in links:
-                href = link['href']
-                # Een renner link bevat 'rider/'
+            for a in row.find_all('a', href=True):
+                href = a['href']
                 if 'rider/' in href and not rider:
-                    rider = link.text.strip()
-                # Een team link bevat 'team/'
+                    rider = a.text.strip()
                 elif 'team/' in href and not team:
-                    team = link.text.strip()
+                    team = a.text.strip()
 
-            # Fallback als er geen team-link is gevonden (soms staat team in platte tekst)
-            if not team and len(cols) >= 4:
-                # Vaak staat team in de laatste kolom van de relevante data
-                team = cols[-1].text.strip()
-
-            # Alleen toevoegen als we in ieder geval een rank en renner hebben
-            if (rank.isdigit() or rank in ['DNF', 'OTL', 'DSQ']) and rider:
-                data.append([koers_naam, rank, rider, team])
+            # Sla op als rank geldig is en renner gevonden
+            if rider and (rank.isdigit() or rank.upper() in ('DNF', 'OTL', 'DSQ')):
+                data.append([koers_naam, rank.upper() if not rank.isdigit() else rank, rider, team])
 
         if not data:
-            return False, "Geen renners gevonden in de tabel. Is de koers al gereden?"
+            return False, "Geen renners gevonden in de tabel. Is de uitslag al beschikbaar?"
 
         # Opslaan naar Google Sheets
         ws_u = sh.worksheet("uitslagen")
         current_data = ws_u.get_all_records()
         df_new = pd.DataFrame(data, columns=["koers_naam", "rank", "rider", "team"])
-        
+
         if current_data:
             df_old = pd.DataFrame(current_data)
-            # Verwijder de oude uitslag van deze specifieke koers
             df_old = df_old[df_old['koers_naam'] != koers_naam]
             final_df = pd.concat([df_old, df_new], ignore_index=True)
         else:
             final_df = df_new
 
         ws_u.clear()
-        # Gebruik de juiste update methode voor gspread
         ws_u.update(values=[final_df.columns.values.tolist()] + final_df.values.tolist(), range_name='A1')
-        
+
         return True, f"Uitslag voor {koers_naam} succesvol opgeslagen ({len(data)} renners)."
 
     except Exception as e:
         return False, f"Fout: {str(e)}"
 
-def scrape_startlijst_en_save(koers_naam, url):
-    try:
-        # 1. URL opschonen naar /startlist
-        if '/result' in url:
-            url = url.replace('/result', '/startlist')
-        elif not url.endswith('/startlist'):
-            url = url.rstrip('/') + '/startlist'
 
-        resp = _pcs_get(url)
+def scrape_startlijst_en_save(koers_naam, url):
+    """
+    Scrapt de startlijst van een PCS startlist-pagina.
+    PCS HTML-structuur (startlist):
+      <ul class="startlist_v4 list moblist">
+        <li class="team">
+          <b><a href="team/uae-team-emirates/2025">UAE Team Emirates</a></b>
+          <ul>
+            <li><span>1</span> <a href="rider/tadej-pogacar">POGACAR Tadej</a></li>
+            ...
+          </ul>
+        </li>
+        ...
+      </ul>
+    """
+    try:
+        # URL normaliseren naar /startlist
+        base = url.rstrip('/')
+        # Verwijder eventueel bestaand /result of /startlist achtervoegsel
+        for suffix in ('/result', '/startlist'):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        startlist_url = base + '/startlist'
+
+        resp = _pcs_get(startlist_url)
         soup = BeautifulSoup(resp.text, 'html.parser')
+
+        # Anti-bot check
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
 
         riders_data = []
 
-        # 2. Zoek de startlijst-container (PCS gebruikt ul.startlist_v1 t/m ul.startlist_v8)
-        container = soup.find('ul', class_=lambda x: x and any(
-            f'startlist_v{i}' in x for i in range(1, 9)
+        # Zoek startlist ul: PCS gebruikt klassen als startlist_v4, startlist_v3, etc.
+        container = soup.find('ul', class_=lambda c: c and any(
+            f'startlist_v{i}' in c for i in range(1, 10)
         ))
-        # Fallback: zoek elke ul/div met 'startlist' in de class
         if not container:
-            container = soup.find(['ul', 'div'], class_=lambda x: x and 'startlist' in x)
+            # Fallback: elke ul/div waarvan de class 'startlist' bevat
+            container = soup.find(['ul', 'div'], class_=lambda c: c and 'startlist' in ' '.join(c))
 
         if container:
-            # 3a. Structuur per team: <li class="team"> blokken
-            team_blocks = container.find_all('li', class_=lambda x: x and 'team' in x.split())
-            if team_blocks:
-                for team_block in team_blocks:
-                    # Teamnaam: link met 'team/' of eerste <b>
-                    team_link = team_block.find('a', href=lambda x: x and 'team/' in x)
-                    team_name = team_link.text.strip() if team_link else ""
+            # Team-blokken zijn <li class="team ...">
+            team_blocks = container.find_all('li', class_=lambda c: c and 'team' in c)
+            for team_block in team_blocks:
+                # Teamnaam via link met 'team/' in href, anders via <b>
+                team_link = team_block.find('a', href=lambda h: h and 'team/' in h)
+                if team_link:
+                    team_name = team_link.text.strip()
+                else:
+                    b_tag = team_block.find('b')
+                    team_name = b_tag.text.strip() if b_tag else ""
 
-                    # Alle rennerlinks binnen dit team-blok
-                    for r_link in team_block.find_all('a', href=lambda x: x and 'rider/' in x):
-                        rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
-                        if rider_name and len(rider_name) > 3:
-                            riders_data.append({
-                                "koers_naam": koers_naam,
-                                "startnummer": "",
-                                "rider": rider_name,
-                                "team": team_name
-                            })
-            else:
-                # 3b. Fallback: geen team-blokken, gewoon alle rennerlinks in container
-                for r_link in container.find_all('a', href=lambda x: x and 'rider/' in x):
-                    # Probeer team via dichtstbijzijnde li-parent
-                    parent_li = r_link.find_parent('li', class_=lambda x: x and 'team' in x)
-                    team_name = ""
-                    if parent_li:
-                        t = parent_li.find('a', href=lambda x: x and 'team/' in x)
-                        team_name = t.text.strip() if t else ""
-                    rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
-                    SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics'}
-                    if rider_name and len(rider_name) > 3 and rider_name not in SKIP:
+                # Renners: alle <a href="rider/..."> binnen dit team-blok
+                for r_link in team_block.find_all('a', href=lambda h: h and 'rider/' in h):
+                    raw = r_link.text.strip()
+                    # PCS schrijft namen als "POGACAR Tadej" — bewaar originele schrijfwijze
+                    if raw and len(raw) > 2:
                         riders_data.append({
                             "koers_naam": koers_naam,
                             "startnummer": "",
-                            "rider": rider_name,
-                            "team": team_name
+                            "rider": raw,
+                            "team": team_name,
                         })
         else:
-            # 4. Geen container gevonden: doorzoek de hele pagina op rennerlinks
-            SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics'}
-            for r_link in soup.find_all('a', href=lambda x: x and 'rider/' in x):
+            # Geen container: doorzoek hele pagina op rider-links
+            SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics', 'Overview'}
+            seen = set()
+            for r_link in soup.find_all('a', href=lambda h: h and 'rider/' in h):
+                raw = r_link.text.strip()
+                if not raw or len(raw) <= 2 or raw in SKIP or raw in seen:
+                    continue
+                seen.add(raw)
+                parent = r_link.find_parent('li', class_=lambda c: c and 'team' in c)
                 team_name = ""
-                parent_li = r_link.find_parent('li', class_=lambda x: x and 'team' in x)
-                if parent_li:
-                    t = parent_li.find('a', href=lambda x: x and 'team/' in x)
-                    team_name = t.text.strip() if t else ""
-                rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
-                if rider_name and len(rider_name) > 3 and rider_name not in SKIP:
-                    riders_data.append({
-                        "koers_naam": koers_naam,
-                        "startnummer": "",
-                        "rider": rider_name,
-                        "team": team_name
-                    })
+                if parent:
+                    tl = parent.find('a', href=lambda h: h and 'team/' in h)
+                    team_name = tl.text.strip() if tl else ""
+                riders_data.append({
+                    "koers_naam": koers_naam,
+                    "startnummer": "",
+                    "rider": raw,
+                    "team": team_name,
+                })
 
-        # 5. Verwerk en voorkom duplicaten
         df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
 
         if df_new.empty:
-            return False, "Geen renners gevonden. PCS heeft de namen mogelijk nog niet klikbaar of de startlijst is er nog niet."
+            return False, "Geen renners gevonden. Is de startlijst al beschikbaar op PCS?"
 
-        # 6. Database bijwerken
-        existing_sl = read_sheet("startlijsten")
         standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
-        
-        # Behoud andere koersen, verwijder alleen de oude data van DEZE koers
+        existing_sl = read_sheet("startlijsten")
+
         if not existing_sl.empty:
             other_sl = existing_sl[existing_sl['koers_naam'] != koers_naam].copy()
-            final_sl = pd.concat([other_sl, df_new], ignore_index=True)
+            final_sl = pd.concat([other_sl, df_new[standard_cols]], ignore_index=True)
         else:
-            final_sl = df_new
+            final_sl = df_new[standard_cols]
 
-        # Zorg dat de kolommen exact kloppen voor de Google Sheet
         final_sl = final_sl[standard_cols].astype(str).replace('nan', '')
 
-        # 7. Schrijf terug naar Google Sheets
         ws_sl = sh.worksheet("startlijsten")
         ws_sl.clear()
         ws_sl.update([standard_cols] + final_sl.values.tolist(), range_name='A1')
-        
+
         st.cache_data.clear()
         return True, f"Succes! {len(df_new)} renners gevonden voor {koers_naam}."
 
