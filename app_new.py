@@ -4,7 +4,7 @@ import unicodedata
 import streamlit as st
 import pandas as pd
 import requests
-import cloudscraper
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 import time
 import random
@@ -779,19 +779,16 @@ def _handmatige_uitslag_opslaan(koers_naam, tekst):
         return False, f"Fout bij opslaan: {str(e)}"
 
 
-# --- SCRAPER: cloudscraper (Cloudflare bypass) + BeautifulSoup parsing ---
+# --- SCRAPER: curl_cffi (echte browser TLS-fingerprint) + BeautifulSoup parsing ---
 
 def _pcs_get(url, max_pogingen=3):
-    """Haal een PCS-URL op via cloudscraper (omzeilt Cloudflare) met retry-logica."""
+    """Haal een PCS-URL op via curl_cffi met Chrome-impersonatie (omzeilt Cloudflare)."""
     laatste_fout = None
     for poging in range(max_pogingen):
         try:
             if poging > 0:
                 time.sleep(random.uniform(3, 6) * poging)
-            scraper = cloudscraper.create_scraper(
-                browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
-            )
-            resp = scraper.get(url, timeout=30)
+            resp = cffi_requests.get(url, impersonate="chrome120", timeout=30)
             resp.raise_for_status()
             return resp
         except Exception as e:
