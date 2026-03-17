@@ -1,7 +1,7 @@
 streamlit
 pandas
 requests
-cloudscraper
+curl-cffi
 beautifulsoup4
 thefuzz
 gspread
