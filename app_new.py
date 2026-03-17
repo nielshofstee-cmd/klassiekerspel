@@ -893,22 +893,22 @@ def scrape_en_save(koers_naam, url):
 def scrape_startlijst_en_save(koers_naam, url):
     """
     Scrapt de startlijst van een PCS startlist-pagina.
-    PCS HTML-structuur (startlist):
-      <ul class="startlist_v4 list moblist">
-        <li class="team">
-          <b><a href="team/uae-team-emirates/2025">UAE Team Emirates</a></b>
+    PCS HTML-structuur (startlist_v4):
+      <ul class="startlist_v4 ...">
+        <li class="ridersCont">
+          <b><a href="team/uae-team-emirates/2026">UAE Team Emirates</a></b>
           <ul>
-            <li><span>1</span> <a href="rider/tadej-pogacar">POGACAR Tadej</a></li>
-            ...
+            <li>
+              <div class="bib">11</div>
+              <a href="rider/tadej-pogacar">POGACAR Tadej</a>
+            </li>
           </ul>
         </li>
-        ...
       </ul>
     """
     try:
         # URL normaliseren naar /startlist
         base = url.rstrip('/')
-        # Verwijder eventueel bestaand /result of /startlist achtervoegsel
         for suffix in ('/result', '/startlist'):
             if base.endswith(suffix):
                 base = base[:-len(suffix)]
@@ -924,57 +924,68 @@ def scrape_startlijst_en_save(koers_naam, url):
 
         riders_data = []
 
-        # Zoek startlist ul: PCS gebruikt klassen als startlist_v4, startlist_v3, etc.
-        container = soup.find('ul', class_=lambda c: c and any(
-            f'startlist_v{i}' in c for i in range(1, 10)
+        # Zoek de startlist container (startlist_v4 of vergelijkbaar)
+        container = soup.find(class_=lambda c: c and any(
+            f'startlist_v{i}' in ' '.join(c) for i in range(1, 10)
         ))
-        if not container:
-            # Fallback: elke ul/div waarvan de class 'startlist' bevat
-            container = soup.find(['ul', 'div'], class_=lambda c: c and 'startlist' in ' '.join(c))
 
         if container:
-            # Team-blokken zijn <li class="team ...">
-            team_blocks = container.find_all('li', class_=lambda c: c and 'team' in c)
-            for team_block in team_blocks:
-                # Teamnaam via link met 'team/' in href, anders via <b>
-                team_link = team_block.find('a', href=lambda h: h and 'team/' in h)
-                if team_link:
-                    team_name = team_link.text.strip()
-                else:
-                    b_tag = team_block.find('b')
-                    team_name = b_tag.text.strip() if b_tag else ""
+            # Team-blokken zijn elementen met class 'ridersCont'
+            team_blocks = container.find_all(class_='ridersCont')
 
-                # Renners: alle <a href="rider/..."> binnen dit team-blok
-                for r_link in team_block.find_all('a', href=lambda h: h and 'rider/' in h):
+            # Fallback: oude structuur met li.team
+            if not team_blocks:
+                team_blocks = container.find_all(class_=lambda c: c and 'team' in c)
+
+            for team_block in team_blocks:
+                # Teamnaam: eerste link met 'team/' in href
+                team_link = team_block.find('a', href=lambda h: h and 'team/' in h)
+                team_name = team_link.text.strip() if team_link else ""
+
+                # Renners staan in een nested <ul>
+                rider_ul = team_block.find('ul')
+                if not rider_ul:
+                    continue
+
+                for li in rider_ul.find_all('li'):
+                    # Startnummer uit .bib element
+                    bib_el = li.find(class_='bib')
+                    bib = bib_el.text.strip() if bib_el else ""
+                    if bib and not bib.isdigit():
+                        bib = ""
+
+                    # Renner via link met 'rider/' in href
+                    r_link = li.find('a', href=lambda h: h and 'rider/' in h)
+                    if not r_link:
+                        continue
                     raw = r_link.text.strip()
-                    # PCS schrijft namen als "POGACAR Tadej" — bewaar originele schrijfwijze
                     if raw and len(raw) > 2:
                         riders_data.append({
                             "koers_naam": koers_naam,
-                            "startnummer": "",
+                            "startnummer": bib,
                             "rider": raw,
                             "team": team_name,
                         })
         else:
-            # Geen container: doorzoek hele pagina op rider-links
-            SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics', 'Overview'}
-            seen = set()
-            for r_link in soup.find_all('a', href=lambda h: h and 'rider/' in h):
-                raw = r_link.text.strip()
-                if not raw or len(raw) <= 2 or raw in SKIP or raw in seen:
-                    continue
-                seen.add(raw)
-                parent = r_link.find_parent('li', class_=lambda c: c and 'team' in c)
-                team_name = ""
-                if parent:
-                    tl = parent.find('a', href=lambda h: h and 'team/' in h)
-                    team_name = tl.text.strip() if tl else ""
-                riders_data.append({
-                    "koers_naam": koers_naam,
-                    "startnummer": "",
-                    "rider": raw,
-                    "team": team_name,
-                })
+            # Fallback: geen container, zoek table.basic (alternatieve PCS layout)
+            table = soup.find('table', class_=lambda c: c and 'basic' in c)
+            if table:
+                for row in (table.find('tbody') or table).find_all('tr'):
+                    r_link = row.find('a', href=lambda h: h and 'rider/' in h)
+                    if not r_link:
+                        continue
+                    raw = r_link.text.strip()
+                    team_link = row.find('a', href=lambda h: h and 'team/' in h)
+                    team_name = team_link.text.strip() if team_link else ""
+                    cols = row.find_all('td')
+                    bib = cols[0].text.strip() if cols and cols[0].text.strip().isdigit() else ""
+                    if raw and len(raw) > 2:
+                        riders_data.append({
+                            "koers_naam": koers_naam,
+                            "startnummer": bib,
+                            "rider": raw,
+                            "team": team_name,
+                        })
 
         df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
 
