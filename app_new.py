@@ -8,10 +8,21 @@ from bs4 import BeautifulSoup
 import time
 import random
 import cloudscraper
+
+def _maak_scraper():
+    return cloudscraper.create_scraper(
+        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True},
+        delay=10
+    )
+
+_cs = _maak_scraper()
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+_AMS = ZoneInfo("Europe/Amsterdam")
 from procyclingstats import Stage, RaceStartlist
 
 
@@ -283,15 +294,19 @@ h2, h3 {
     overflow: hidden;
     box-shadow: var(--card-shadow);
     border: 1px solid var(--grijs-mid);
+    background-color: #ffffff !important;
 }
 
-/* Alle tekst in tabellen donkerblauw */
+[data-testid="stDataFrame"] > div,
+[data-testid="stDataFrame"] iframe {
+    background-color: #ffffff !important;
+}
+
+/* Tekst in tabellen donkerblauw (werkt bij niet-canvas rendering) */
 [data-testid="stDataFrame"] td,
 [data-testid="stDataFrame"] th,
 [data-testid="stDataFrame"] [class*="cell"],
-[data-testid="stDataFrame"] [class*="header"],
-[data-testid="stDataFrame"] span,
-[data-testid="stDataFrame"] div {
+[data-testid="stDataFrame"] [class*="header"] {
     color: var(--tekst-donker) !important;
     font-family: 'DM Sans', sans-serif !important;
     font-size: 13px !important;
@@ -446,6 +461,14 @@ hr {
 }
 
 /* Dropdown opties in lijst */
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div,
+[data-baseweb="menu"],
+[role="listbox"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
 [data-baseweb="popover"] li,
 [data-baseweb="menu"] li,
 [role="listbox"] li,
@@ -453,6 +476,14 @@ hr {
     color: var(--tekst-donker) !important;
     font-family: 'DM Sans', sans-serif;
     font-size: 14px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+
+[role="option"]:hover,
+[role="option"][aria-selected="true"] {
+    background: #f0f4f8 !important;
+    background-color: #f0f4f8 !important;
 }
 
 /* Input labels */
@@ -505,6 +536,8 @@ hr {
         min-height: 44px !important;
         font-size: 15px !important;
         color: var(--tekst-donker) !important;
+        background: #ffffff !important;
+        background-color: #ffffff !important;
     }
 
     [data-testid="stSelectbox"] > div > div *,
@@ -512,6 +545,23 @@ hr {
     [data-baseweb="menu"] li {
         color: var(--tekst-donker) !important;
         font-size: 15px !important;
+    }
+
+    /* Dropdown popover op mobiel altijd wit */
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] > div,
+    [data-baseweb="menu"],
+    [role="listbox"] {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+    }
+
+    [data-baseweb="popover"] li,
+    [data-baseweb="menu"] li,
+    [role="option"] {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        color: #0d1f35 !important;
     }
 
     /* Buttons makkelijker klikbaar op touch */
@@ -537,6 +587,12 @@ hr {
     /* Dataframe op mobiel */
     [data-testid="stDataFrame"] {
         font-size: 12px;
+        background-color: #ffffff !important;
+    }
+
+    [data-testid="stDataFrame"] > div,
+    [data-testid="stDataFrame"] iframe {
+        background-color: #ffffff !important;
     }
 
     /* Kolommen op mobiel onder elkaar */
@@ -548,53 +604,72 @@ hr {
 """, unsafe_allow_html=True)
 
 # --- DATABASE CONFIGURATIE & VERBINDING ---
-scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+def get_gspread_client():
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_info = dict(st.secrets["gcp_service_account"])
+            if "\\n" in creds_info["private_key"]:
+                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+        else:
+            credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception as e:
+        st.error(f"❌ Verbinding met Google mislukt: {e}")
+        return None
 
-# Credentials laden: via environment variable (Railway) of lokaal JSON bestand
-google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
-if google_creds_env:
-    creds_dict = json.loads(google_creds_env)
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+# Initialiseer de verbinding
+gc = get_gspread_client()
+
+# --- HET WACHTWOORD INSTELLEN ---
+# We kijken eerst in secrets.toml, dan in de environment, en anders een harde fallback
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "kankerbuffel"))
+
+if gc:
+    try:
+        SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1i8UB1igCk8cSCneTeQEGkxO0XFsuhSP2u4BLZfwHllM/edit"
+        sh = gc.open_by_url(SPREADSHEET_URL)
+    except Exception as e:
+        st.error(f"❌ De Google Sheet kon niet worden geopend: {e}")
+        st.stop()
 else:
-    credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+    st.stop()
 
-gc = gspread.authorize(credentials)
+# --- HULPFUNCTIES VOOR DATA ---
 
-# 3. Open de sheet
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1i8UB1igCk8cSCneTeQEGkxO0XFsuhSP2u4BLZfwHllM/edit"
-sh = gc.open_by_url(SPREADSHEET_URL)
-
-# 4. Hulpfunctie om data te lezen met CACHING (tegen de 429 error)
 @st.cache_data(ttl=60) # Onthoud de data voor 60 seconden
 def read_sheet(worksheet_name):
     try:
-        # Een kleine random pauze helpt om niet tegelijk met andere verzoeken binnen te komen
+        # Een kleine random pauze helpt tegen de '429 Too Many Requests' error
         time.sleep(random.uniform(0.5, 1.5)) 
         worksheet = sh.worksheet(worksheet_name)
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
+        # Clean de kolommen (kleine letters, geen spaties)
         df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception as e:
         if "429" in str(e):
-            st.error("Google limiet bereikt. Wacht 10 seconden en ververs de pagina.")
+            st.error("Google limiet bereikt. Wacht even en ververs de pagina.")
         else:
             st.error(f"Fout bij laden van {worksheet_name}: {e}")
         return pd.DataFrame()
 
-
 def get_koersen_volgorde():
     try:
-        # Gebruik de nieuwe hulpfunctie om de koersen op te halen
         df_k = read_sheet("koersen")
-        if not df_k.empty:
+        if not df_k.empty and 'koers_naam' in df_k.columns:
             return df_k['koers_naam'].tolist()
         return []
-    except Exception as e:
+    except Exception:
         return []
 
+# --- CONSTANTEN ---
 PUNTEN_SCHEMA = {
     1:100, 2:90, 3:80, 4:70, 5:64, 6:60, 7:56, 8:52, 9:48, 10:44,
     11:40, 12:36, 13:32, 14:28, 15:24, 16:20, 17:16, 18:12, 19:8, 20:4
@@ -639,124 +714,259 @@ else:
     KOERS_DATA = _KOERS_DATA_FALLBACK
 
 
-# --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
-def scrape_en_save(koers_naam, url):
-    try:
-        # Haal het relatieve pad op uit de volledige URL
-        relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
-        time.sleep(random.uniform(2, 4))
-        stage = Stage(relatief_pad)
-        resultaten = stage.results()
-        if not resultaten:
-            return False, "Geen resultaten gevonden via procyclingstats package."
+def get_standaard_koers_index(koers_lijst):
+    """Geeft de index van de koers waarvan de deadlinedatum het dichtst bij vandaag ligt.
+    Zo wordt een race van vandaag (deadline al voorbij) verkozen boven een race van morgen."""
+    nu = datetime.now(_AMS)
+    best_i, best_delta = 0, None
+    for i, k in enumerate(koers_lijst):
+        if k in KOERS_DATA:
+            try:
+                dt = datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                delta = abs((dt - nu).total_seconds())
+                if best_delta is None or delta < best_delta:
+                    best_delta, best_i = delta, i
+            except ValueError:
+                pass
+    return best_i
 
-        # 1. Haal huidige uitslagen op om te filteren
-        existing_df = read_sheet("uitslagen")
+
+# --- HANDMATIGE UITSLAG INVOER (fallback als scrapen mislukt) ---
+def _handmatige_uitslag_opslaan(koers_naam, tekst):
+    try:
         standard_cols = ['koers_naam', 'rank', 'rider', 'team']
+        toegestane_statussen = {"DNF", "OTL", "DSQ", "DNS"}
+        temp_data = []
+        for regel in tekst.strip().splitlines():
+            regel = regel.strip()
+            if not regel:
+                continue
+            delen = [d.strip() for d in regel.split(',')]
+            if len(delen) < 2:
+                continue
+            rank = delen[0].upper()
+            rider_raw = delen[1] if len(delen) > 1 else ''
+            team = delen[2] if len(delen) > 2 else ''
+            rider = ' '.join(w.capitalize() for w in rider_raw.split())
+            is_getal = rank.isdigit()
+            is_status = rank in toegestane_statussen
+            if rider and (is_getal or is_status):
+                temp_data.append({"koers_naam": koers_naam, "rank": rank, "rider": rider, "team": team})
+
+        if not temp_data:
+            return False, "Geen geldige regels gevonden. Controleer het formaat: rank,rider,team"
+
+        existing_df = read_sheet("uitslagen")
         if not existing_df.empty:
             other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
         else:
             other_races_df = pd.DataFrame(columns=standard_cols)
 
-        # 2. Verwerk de resultaten
-        toegestane_statussen = ["DNF", "OTL", "DSQ", "DNS"]
-        temp_data = []
-        for r in resultaten:
-            # Rank kan in verschillende velden zitten afhankelijk van de package versie
-            rank = str(r.get('rank', r.get('status', r.get('result', '')))).upper().strip()
-            rider_raw = r.get('rider_name', '').strip()
-            rider = ' '.join(w.capitalize() for w in rider_raw.split())
-            team = r.get('team_name', '').strip()
-            is_getal = rank.isdigit()
-            is_uitvaller = rank in toegestane_statussen
-            # Voeg toe als gefinisht, uitgevallen, OF als er een team bekend is (vangt edge cases op)
-            if rider and (is_getal or is_uitvaller):
-                temp_data.append({
-                    "koers_naam": koers_naam,
-                    "rank": rank,
-                    "rider": rider,
-                    "team": team
-                })
-            elif rider and team and not is_getal:
-                # Vangnet: renner heeft geen getal als rank maar wel een team -> DNF
-                temp_data.append({
-                    "koers_naam": koers_naam,
-                    "rank": "DNF",
-                    "rider": rider,
-                    "team": team
-                })
-
-        if not temp_data:
-            return False, "Geen renners verwerkt uit de resultaten."
-
-        new_scraped_df = pd.DataFrame(temp_data)
-        final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
-        final_df = final_df[standard_cols]
+        new_df = pd.DataFrame(temp_data)
+        final_df = pd.concat([other_races_df, new_df], ignore_index=True)[standard_cols]
 
         ws_u = sh.worksheet("uitslagen")
         ws_u.clear()
         ws_u.update([standard_cols] + final_df.values.tolist())
         st.cache_data.clear()
+        return True, f"Succes! {len(temp_data)} renners handmatig opgeslagen voor {koers_naam}."
+    except Exception as e:
+        return False, f"Fout bij opslaan: {str(e)}"
 
-        return True, f"Succes! {len(temp_data)} renners verwerkt (incl. DNF/OTL/DSQ)."
+
+# --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
+def _pcs_get(url, max_pogingen=3):
+    """Haal een URL op met retry-logica en wisselende user-agents."""
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    ]
+    extra_headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.google.com/",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+    }
+    wacht = 2
+    laatste_fout = None
+    for poging in range(max_pogingen):
+        try:
+            scraper = _maak_scraper()
+            scraper.headers.update({"User-Agent": user_agents[poging % len(user_agents)]})
+            scraper.headers.update(extra_headers)
+            time.sleep(random.uniform(2, 5) + wacht * poging)
+            resp = scraper.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            laatste_fout = e
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 403:
+                # 403 = geblokkeerd, wacht langer en probeer opnieuw
+                time.sleep(wacht * (poging + 1))
+                continue
+            raise
+    raise laatste_fout
+
+
+# --- VERBETERDE SCRAPER LOGICA ---
+
+def scrape_en_save(koers_naam, url):
+    try:
+        full_url = url if url.endswith('/') else url + '/'
+        response = _cs.get(full_url)
+        if response.status_code != 200:
+            return False, f"PCS gaf error {response.status_code}"
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Zoek de juiste tabel
+        table = soup.find('table', class_='results')
+        if not table:
+            table = soup.find('table', class_='basic')
+            
+        if not table:
+            return False, "Geen uitslag tabel gevonden."
+
+        data = []
+        rows = table.find('tbody').find_all('tr') if table.find('tbody') else table.find_all('tr')
+        
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) < 2:
+                continue
+
+            # 1. Rank (altijd de eerste kolom)
+            rank = cols[0].text.strip()
+            
+            # 2. Zoek de Renner en Team op basis van de links (<a>)
+            # Dit is veel betrouwbaarder dan kolom-index (0,1,2)
+            rider = ""
+            team = ""
+            
+            links = row.find_all('a', href=True)
+            for link in links:
+                href = link['href']
+                # Een renner link bevat 'rider/'
+                if 'rider/' in href and not rider:
+                    rider = link.text.strip()
+                # Een team link bevat 'team/'
+                elif 'team/' in href and not team:
+                    team = link.text.strip()
+
+            # Fallback als er geen team-link is gevonden (soms staat team in platte tekst)
+            if not team and len(cols) >= 4:
+                # Vaak staat team in de laatste kolom van de relevante data
+                team = cols[-1].text.strip()
+
+            # Alleen toevoegen als we in ieder geval een rank en renner hebben
+            if (rank.isdigit() or rank in ['DNF', 'OTL', 'DSQ']) and rider:
+                data.append([koers_naam, rank, rider, team])
+
+        if not data:
+            return False, "Geen renners gevonden in de tabel. Is de koers al gereden?"
+
+        # Opslaan naar Google Sheets
+        ws_u = sh.worksheet("uitslagen")
+        current_data = ws_u.get_all_records()
+        df_new = pd.DataFrame(data, columns=["koers_naam", "rank", "rider", "team"])
+        
+        if current_data:
+            df_old = pd.DataFrame(current_data)
+            # Verwijder de oude uitslag van deze specifieke koers
+            df_old = df_old[df_old['koers_naam'] != koers_naam]
+            final_df = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            final_df = df_new
+
+        ws_u.clear()
+        # Gebruik de juiste update methode voor gspread
+        ws_u.update(values=[final_df.columns.values.tolist()] + final_df.values.tolist(), range_name='A1')
+        
+        return True, f"Uitslag voor {koers_naam} succesvol opgeslagen ({len(data)} renners)."
+
     except Exception as e:
         return False, f"Fout: {str(e)}"
 
-# --- STARTLIJST SCRAPER ---
 def scrape_startlijst_en_save(koers_naam, url):
     try:
-        # Bouw de startlist URL
-        startlist_url = url.replace('/result', '/startlist').rstrip('/')
-        if not startlist_url.endswith('/startlist'):
-            startlist_url = startlist_url + '/startlist'
-        relatief_pad = startlist_url.replace("https://www.procyclingstats.com/", "").strip("/")
-        time.sleep(random.uniform(2, 4))
-        startlist = RaceStartlist(relatief_pad)
-        renners = startlist.startlist()
-        if not renners:
-            return False, "Geen startlijst gevonden via procyclingstats package."
+        # 1. URL opschonen
+        if '/result' in url:
+            url = url.replace('/result', '/startlist')
+        elif not url.endswith('/startlist'):
+            url = url.rstrip('/') + '/startlist'
 
-        # 1. Haal huidige startlijsten op om te filteren
-        standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
-        try:
-            existing_df = read_sheet("startlijsten")
-            if not existing_df.empty:
-                other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
-            else:
-                other_races_df = pd.DataFrame(columns=standard_cols)
-        except Exception:
-            other_races_df = pd.DataFrame(columns=standard_cols)
+        resp = _pcs_get(url)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        riders_data = []
+        
+        # 2. Zoek de hoofdcontainer van de startlijst (meestal startlist-v1 t/m v8)
+        container = soup.find(['div', 'ul', 'table'], class_=lambda x: x and 'startlist' in x)
+        if not container:
+            container = soup # Fallback naar de hele pagina
 
-        # 2. Verwerk de startlijst
-        temp_data = []
-        for r in renners:
-            rider_raw = r.get('rider_name', '').strip()
-            rider = ' '.join(w.capitalize() for w in rider_raw.split())
-            team = r.get('team_name', '').strip()
-            startnummer = str(r.get('number', r.get('bib', r.get('rank', '')))).strip()
-            if rider:
-                temp_data.append({
+        # 3. Zoek alle renner-links (bevatten altijd 'rider/')
+        for r_link in container.find_all('a', href=lambda x: x and 'rider/' in x):
+            # Zoek teamnaam door 'omhoog' te kijken in de HTML structuur
+            # We zoeken de dichtstbijzijnde li, div of tr die een team-class heeft
+            team_div = r_link.find_parent(['li', 'div', 'tr'], class_=lambda x: x and 'team' in x)
+            team_name = ""
+            
+            if team_div:
+                # Zoek de teamnaam (vaak een link met 'team/' of een <b> tag)
+                team_header = team_div.find(['b', 'a'], href=lambda x: x and 'team/' in x)
+                if team_header:
+                    team_name = team_header.text.strip()
+            
+            # Formatteer naam (Eerste Letters Hoofdletters)
+            rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
+            
+            # Filter rotzooi (knoppen als 'More', 'Profiles' of icoontjes)
+            if rider_name and len(rider_name) > 3 and rider_name not in ['More', 'Profiles', 'Results', 'Races', 'History']:
+                riders_data.append({
                     "koers_naam": koers_naam,
-                    "startnummer": startnummer,
-                    "rider": rider,
-                    "team": team
+                    "startnummer": "", 
+                    "rider": rider_name,
+                    "team": team_name
                 })
 
-        if not temp_data:
-            return False, "Geen renners gevonden in de startlijst."
+        # 4. Verwerk en voorkom duplicaten
+        df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
 
-        new_scraped_df = pd.DataFrame(temp_data)
-        final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
-        final_df = final_df[standard_cols]
+        if df_new.empty:
+            return False, "PCS heeft de namen nog niet klikbaar staan of de structuur is afwijkend."
 
+        # 5. Database bijwerken
+        existing_sl = read_sheet("startlijsten")
+        standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
+        
+        # Behoud andere koersen, verwijder alleen de oude data van DEZE koers
+        if not existing_sl.empty:
+            other_sl = existing_sl[existing_sl['koers_naam'] != koers_naam].copy()
+            final_sl = pd.concat([other_sl, df_new], ignore_index=True)
+        else:
+            final_sl = df_new
+
+        # Zorg dat de kolommen exact kloppen voor de Google Sheet
+        final_sl = final_sl[standard_cols].astype(str).replace('nan', '')
+
+        # 6. Schrijf terug naar Google Sheets
         ws_sl = sh.worksheet("startlijsten")
         ws_sl.clear()
-        ws_sl.update([standard_cols] + final_df.values.tolist())
+        ws_sl.update([standard_cols] + final_sl.values.tolist(), range_name='A1')
+        
         st.cache_data.clear()
+        return True, f"Succes! {len(df_new)} renners gevonden voor {koers_naam}."
 
-        return True, f"Succes! {len(temp_data)} renners in startlijst verwerkt."
     except Exception as e:
-        return False, f"Fout: {str(e)}"
+        return False, f"Startlijst fout: {str(e)}"
 
 # --- REKEN LOGICA (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
 @st.cache_data(ttl=60)
@@ -830,12 +1040,13 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
             except ValueError:
                 rank_int = 999 # Voor DNF/OTL/DSQ
             
-            # Team punten logica (werkt nu ook voor DNF, want rt is bekend)
+            # Team punten logica: top-3 finishers krijgen GEEN teampunten
             punten_team = 0
-            if rt:
-                if t1 and rt == t1 and rank != "1" and rank != 1: punten_team += 30
-                if t2 and rt == t2 and rank != "2" and rank != 2: punten_team += 20
-                if t3 and rt == t3 and rank != "3" and rank != 3: punten_team += 10
+            top3_renner = str(rank) in {"1", "2", "3"}
+            if rt and not top3_renner:
+                if t1 and rt == t1: punten_team += 30
+                if t2 and rt == t2: punten_team += 20
+                if t3 and rt == t3: punten_team += 10
             
             subtotaal = punten_plek + punten_team
             totaal += subtotaal
@@ -852,17 +1063,6 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
     return totaal, details
 
 # --- MAIN APP NAVIGATIE ---
-
-# Header afbeelding
-if os.path.exists("header.jpg"):
-    import base64
-    with open("header.jpg", "rb") as f:
-        img_b64 = base64.b64encode(f.read()).decode()
-    st.markdown(
-        f'<img src="data:image/jpeg;base64,{img_b64}" '
-        f'style="width:100%;height:80px;object-fit:cover;display:block;margin:0;padding:0;">',
-        unsafe_allow_html=True
-    )
 
 # Topnavigatie header
 st.markdown("""
@@ -903,42 +1103,46 @@ with tab_klas:
 
         if 'subpoule' not in s_all.columns: s_all['subpoule'] = ""
         history_data, scores = [], []
-        
+        laatste_koers = koersen_gehad[-1] if koersen_gehad else None
+
         with st.spinner('Klassement berekenen...'):
             for speler in sorted(s_all['speler_naam'].unique()):
                 speler_rows = s_all[s_all['speler_naam'] == speler].copy()
                 poule_val = speler_rows['subpoule'].iloc[0] if not speler_rows['subpoule'].empty else ""
                 poule_lijst = [p.strip() for p in str(poule_val).split(",")] if poule_val else []
-                
+
                 cumulatief = 0
+                laatste_score = 0
                 for k in koersen_gehad:
                     koers_datum_str = KOERS_DATA[k].split(" ")[0]
                     k_dt = pd.to_datetime(koers_datum_str)
 
                     mask = (
-                        (pd.to_datetime(speler_rows['vanaf_datum']) <= k_dt) & 
+                        (pd.to_datetime(speler_rows['vanaf_datum']) <= k_dt) &
                         (
-                            (speler_rows['tot_datum'].isna()) | 
-                            (speler_rows['tot_datum'] == "") | 
+                            (speler_rows['tot_datum'].isna()) |
+                            (speler_rows['tot_datum'] == "") |
                             (pd.to_datetime(speler_rows['tot_datum']) > k_dt)
                         )
                     )
-                    
+
                     mr_voor_deze_koers = speler_rows[mask]['renner_naam'].tolist()
                     koers_score, _ = bereken_volledige_score(speler, k, u_all, k_all, mr_voor_deze_koers)
                     cumulatief += koers_score
-                    
+                    if k == laatste_koers:
+                        laatste_score = int(koers_score)
+
                     koers_idx = koersen_gehad.index(k) + 1
                     koers_label = f"{koers_idx:02d}. {k}"
                     history_data.append({"Koers": koers_label, "Speler": speler, "Punten": int(cumulatief)})
-                
-                scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Poules": poule_lijst})
+
+                scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Laatste": laatste_score, "Poules": poule_lijst})
 
         df_scores = pd.DataFrame(scores)
         tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
 
         # Bereken vorige stand (op één na laatste koers) voor pijltjes
-        def bereken_vorige_stand(df_scores_huidig, history_data, koersen_gehad):
+        def bereken_vorige_stand(history_data, koersen_gehad, spelers=None):
             if len(koersen_gehad) < 2:
                 return {}
             # Puntentotaal tot en met één koers terug
@@ -946,10 +1150,11 @@ with tab_klas:
             vorige = {}
             for entry in history_data:
                 if entry['Koers'] == vorige_koers_label:
-                    vorige[entry['Speler']] = entry['Punten']
+                    if spelers is None or entry['Speler'] in spelers:
+                        vorige[entry['Speler']] = entry['Punten']
             if not vorige:
                 return {}
-            # Rangschik op vorige stand
+            # Rangschik op vorige stand (alleen binnen de opgegeven spelers)
             gesorteerd = sorted(vorige.items(), key=lambda x: x[1], reverse=True)
             return {speler: i+1 for i, (speler, _) in enumerate(gesorteerd)}
 
@@ -971,42 +1176,49 @@ with tab_klas:
                     trends.append("")
             return trends
 
-        vorige_ranks = bereken_vorige_stand(df_scores, history_data, koersen_gehad)
-
         # Functie voor compacte weergave zonder lege rijen, met trend kolom
-        def display_compact_df(df):
+        def display_compact_df(df, vorige_ranks):
             n_rijen = len(df)
             calc_height = TABLE_HEADER_HEIGHT + (n_rijen * TABLE_ROW_HEIGHT)
 
             df_show = df[['Deelnemer', 'Totaal']].copy().reset_index(drop=True)
             df_show.index += 1
 
+            # Voeg laatste koers kolom in vóór Totaal
+            col_config = {
+                "Deelnemer": st.column_config.TextColumn("Deelnemer"),
+                "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
+            }
+            if laatste_koers and 'Laatste' in df.columns:
+                df_show.insert(len(df_show.columns) - 1, laatste_koers, df['Laatste'].values)
+                col_config[laatste_koers] = st.column_config.NumberColumn(laatste_koers, width="small", format="%d")
+
             # Voeg trend kolom toe als er vorige stands zijn
             if vorige_ranks:
                 df_show.insert(0, '↕', maak_trend_kolom(df_show, vorige_ranks))
+                col_config["↕"] = st.column_config.TextColumn("↕", width=50)
 
             st.dataframe(
                 df_show,
-                column_config={
-                    "↕": st.column_config.TextColumn("↕", width=50),
-                    "Deelnemer": st.column_config.TextColumn("Deelnemer", width="medium"),
-                    "Totaal": st.column_config.NumberColumn("Totaal", width="small", format="%d"),
-                },
+                column_config=col_config,
                 hide_index=False,
-                use_container_width=False,
+                use_container_width=True,
                 height=calc_height
             )
 
         with tab1:
             st.subheader("Algemeen Klassement")
             df_alg = df_scores.sort_values('Totaal', ascending=False).reset_index(drop=True)
-            display_compact_df(df_alg)
+            vorige_ranks_alg = bereken_vorige_stand(history_data, koersen_gehad)
+            display_compact_df(df_alg, vorige_ranks_alg)
 
         def toon_poule_tabel(poule_naam):
             mask = df_scores['Poules'].apply(lambda x: poule_naam in x)
             df_p = df_scores[mask].sort_values('Totaal', ascending=False).reset_index(drop=True)
             if not df_p.empty:
-                display_compact_df(df_p)
+                spelers_in_poule = set(df_p['Deelnemer'])
+                vorige_ranks_poule = bereken_vorige_stand(history_data, koersen_gehad, spelers=spelers_in_poule)
+                display_compact_df(df_p, vorige_ranks_poule)
             else:
                 st.info(f"Geen spelers gevonden voor {poule_naam}.")
 
@@ -1032,7 +1244,8 @@ with tab_uitslag:
     if not u_all.empty:
         volgorde = koersen_volgorde
         koers_opties = [k for k in volgorde if k in u_all['koers_naam'].unique()]
-        koers = st.selectbox("Selecteer een koers:", koers_opties if koers_opties else u_all['koers_naam'].unique())
+        _ul = koers_opties if koers_opties else list(u_all['koers_naam'].unique())
+        koers = st.selectbox("Selecteer een koers:", _ul, index=get_standaard_koers_index(_ul))
         
         st.subheader(f"Officiële Uitslag: {koers}")
         top_uitslag = u_all[u_all['koers_naam'] == koers].copy()
@@ -1133,7 +1346,7 @@ with tab_startlijst:
         if not koersen_sl_gesorteerd:
             st.info("Geen koersen gevonden in de startlijsten database.")
         else:
-            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, key="sl_koers_view")
+            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, index=get_standaard_koers_index(koersen_sl_gesorteerd), key="sl_koers_view")
 
             koers_df = sl_all[sl_all['koers_naam'] == gekozen_koers].copy()
 
@@ -1284,15 +1497,11 @@ with tab_team:
         st.dataframe(
             df_mijn_team,
             column_config={
-                "Renner": st.column_config.TextColumn("Renner", width="medium"),
-                "Totaal Punten": st.column_config.NumberColumn(
-                    "Totaal Punten",
-                    width="medium",
-                    format="%d"
-                ),
+                "Renner": st.column_config.TextColumn("Renner"),
+                "Totaal Punten": st.column_config.NumberColumn("Totaal Punten", width="small", format="%d"),
             },
             hide_index=True,
-            use_container_width=False,
+            use_container_width=True,
             height=team_height
         )
         
@@ -1313,12 +1522,13 @@ with tab_captains:
                 
                 # --- SECTIE 1: CAPTAINS INSTELLEN ---
                 st.subheader("📝 Captains Instellen")
-                koers_keuze = st.selectbox("Voor welke koers?", list(KOERS_DATA.keys()))
+                _captain_koersen = list(KOERS_DATA.keys())
+                koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_standaard_koers_index(_captain_koersen))
                 
                 # Check of koers al gestart is
                 deadline_str = KOERS_DATA[koers_keuze]
-                deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M")
-                is_gestart = datetime.now() >= deadline_dt
+                deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                is_gestart = datetime.now(_AMS) >= deadline_dt
 
                 huidige_keuze = k_all[(k_all['speler_naam'] == naam) & (k_all['koers_naam'] == koers_keuze)]
                 if not huidige_keuze.empty:
@@ -1414,9 +1624,10 @@ with tab_captains:
                         st.info("Je hebt nog geen captains ingesteld.")
 
                 with tab_alle:
-                    bekijk_koers = st.selectbox("Bekijk captains voor:", list(KOERS_DATA.keys()), key="view_others")
-                    nu = datetime.now()
-                    start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M")
+                    _alle_koersen = list(KOERS_DATA.keys())
+                    bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_standaard_koers_index(_alle_koersen), key="view_others")
+                    nu = datetime.now(_AMS)
+                    start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
 
                     if nu < start_tijd:
                         st.info(f"🤫 De captains voor **{bekijk_koers}** blijven geheim tot de start om {start_tijd.strftime('%H:%M')} uur.")
@@ -1438,7 +1649,6 @@ with tab_admin:
     
     # --- WACHTWOORD BEVEILIGING ---
     poging = st.text_input("Voer het admin-wachtwoord in:", type="password")
-    
     if ADMIN_PASSWORD and poging == ADMIN_PASSWORD:
         st.success("Wachtwoord correct. Welkom beheerder.")
         
@@ -1535,6 +1745,31 @@ with tab_admin:
                         st.success(f"✅ {msg}")
                     else:
                         st.error(f"❌ {msg}")
+                        st.info("💡 Scrapen mislukt? Gebruik de handmatige invoer hieronder.")
+
+                st.write("---")
+
+                # Handmatige uitslag-invoer als fallback (bijv. als IP geblokkeerd)
+                with st.expander("✍️ Uitslag handmatig invoeren (fallback bij blokkade)"):
+                    st.markdown("""
+Plak de uitslag hieronder in het volgende formaat (één renner per regel):
+```
+1,Mathieu Van Der Poel,Alpecin-Deceuninck
+2,Tom Pidcock,Ineos Grenadiers
+3,Wout Van Aert,Visma-Lease a Bike
+DNF,Tadej Pogacar,UAE Team Emirates
+```
+**Kolommen:** `rank,rider,team` — scheidingsteken is een komma.
+""")
+                    handmatig_koers = st.selectbox("Koers:", ["---"] + koers_lijst, key="handmatig_koers")
+                    handmatig_tekst = st.text_area("Plak hier de uitslag:", height=300, key="handmatig_tekst",
+                                                   placeholder="1,Mathieu Van Der Poel,Alpecin-Deceuninck\n2,Tom Pidcock,Ineos Grenadiers\n...")
+                    if st.button("Sla handmatige uitslag op") and handmatig_koers != "---" and handmatig_tekst.strip():
+                        ok, msg = _handmatige_uitslag_opslaan(handmatig_koers, handmatig_tekst)
+                        if ok:
+                            st.success(f"✅ {msg}")
+                        else:
+                            st.error(f"❌ {msg}")
                 
                 st.write("---")
                 
