@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Map in de container aanmaken
 WORKDIR /app
 
-# Systeemtools installeren (nodig voor cloudscraper en lxml)
+# Systeemtools installeren (nodig voor lxml)
 RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
