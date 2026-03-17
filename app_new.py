@@ -861,9 +861,11 @@ def scrape_en_save(koers_naam, url):
                 elif 'team/' in href and not team:
                     team = a.text.strip()
 
-            # Sla op als rank geldig is en renner gevonden
-            if rider and (rank.isdigit() or rank.upper() in ('DNF', 'OTL', 'DSQ')):
-                data.append([koers_naam, rank.upper() if not rank.isdigit() else rank, rider, team])
+            # Sla op als er een renner gevonden is — accepteer elke rank-waarde
+            # (isdigit = finisher, bekende codes = DNF/OTL/DSQ, maar ook onbekende codes doorlaten)
+            if rider and rank:
+                norm_rank = rank.upper() if not rank.isdigit() else rank
+                data.append([koers_naam, norm_rank, rider, team])
 
         if not data:
             return False, "Geen renners gevonden in de tabel. Is de uitslag al beschikbaar?"
@@ -1274,7 +1276,9 @@ with tab_klas:
 # =============================================
 with tab_uitslag:
     st.title("🏁 Koersuitslag & Puntenverdeling")
-    if not u_all.empty:
+    if u_all.empty:
+        st.info("Nog geen uitslagen beschikbaar. Scrape ze eerst via de Beheer pagina.")
+    elif not u_all.empty:
         volgorde = koersen_volgorde
         koers_opties = [k for k in volgorde if k in u_all['koers_naam'].unique()]
         _ul = koers_opties if koers_opties else list(u_all['koers_naam'].unique())
@@ -1516,9 +1520,9 @@ with tab_team:
         
         r_data = []
         with st.spinner('Punten berekenen...'):
+            koersen_met_uitslag = u_all['koers_naam'].unique() if not u_all.empty else []
             for r in mr:
-                # Bereken de totale score
-                score = sum(int(bereken_volledige_score(speler, k, u_all, k_all, [r])[0]) for k in u_all['koers_naam'].unique())
+                score = sum(int(bereken_volledige_score(speler, k, u_all, k_all, [r])[0]) for k in koersen_met_uitslag)
                 r_data.append({"Renner": r, "Totaal Punten": score})
         
         # Maak DataFrame en sorteer
