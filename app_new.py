@@ -944,73 +944,95 @@ def scrape_startlijst_en_save(koers_naam, url):
 
         riders_data = []
 
-        # Zoek de startlist container (startlist_v4 of vergelijkbaar)
-        container = soup.find(class_=lambda c: c and any(
-            f'startlist_v{i}' in ' '.join(c) for i in range(1, 10)
-        ))
-
-        if container:
-            # Team-blokken zijn elementen met class 'ridersCont'
-            team_blocks = container.find_all(class_='ridersCont')
-
-            # Fallback: oude structuur met li.team
-            if not team_blocks:
-                team_blocks = container.find_all(class_=lambda c: c and 'team' in c)
-
-            for team_block in team_blocks:
-                # Teamnaam: eerste link met 'team/' in href
-                team_link = team_block.find('a', href=lambda h: h and 'team/' in h)
-                team_name = team_link.text.strip() if team_link else ""
-
-                # Renners staan in een nested <ul>
-                rider_ul = team_block.find('ul')
-                if not rider_ul:
+        # --- Methode 1: table.basic (PCS tabel-layout) ---
+        table_el = soup.find('table', class_='basic')
+        if table_el:
+            for row in (table_el.find('tbody') or table_el).find_all('tr'):
+                r_link = row.find('a', href=lambda h: h and 'rider/' in h)
+                if not r_link:
                     continue
+                raw = r_link.text.strip()
+                team_link = row.find('a', href=lambda h: h and 'team/' in h)
+                team_name = team_link.text.strip() if team_link else ""
+                cols = row.find_all('td')
+                bib = ""
+                if cols:
+                    bib_txt = cols[0].text.strip()
+                    bib = bib_txt if bib_txt.isdigit() else ""
+                if raw and len(raw) > 2:
+                    riders_data.append({
+                        "koers_naam": koers_naam,
+                        "startnummer": bib,
+                        "rider": raw,
+                        "team": team_name,
+                    })
 
-                for li in rider_ul.find_all('li'):
-                    # Startnummer uit .bib element
-                    bib_el = li.find(class_='bib')
-                    bib = bib_el.text.strip() if bib_el else ""
-                    if bib and not bib.isdigit():
+        # --- Methode 2: .startlist_v4 met .ridersCont (standaard PCS layout) ---
+        if not riders_data:
+            container = soup.find(class_='startlist_v4')
+            if container:
+                for team_block in container.find_all(class_='ridersCont'):
+                    # Teamnaam: eerste <a> in het team-blok (exact zoals procyclingstats library)
+                    first_a = team_block.find('a')
+                    team_name = first_a.text.strip() if first_a else ""
+
+                    rider_ul = team_block.find('ul')
+                    if not rider_ul:
+                        continue
+
+                    for li in rider_ul.find_all('li', recursive=False):
+                        # Bib: direct child element met class 'bib'
                         bib = ""
+                        bib_el = li.find(class_='bib')
+                        if bib_el:
+                            bib_txt = bib_el.get_text(deep=False).split()[0] if bib_el.get_text().strip() else ""
+                            bib = bib_txt if bib_txt.isdigit() else ""
 
-                    # Renner via link met 'rider/' in href
-                    r_link = li.find('a', href=lambda h: h and 'rider/' in h)
-                    if not r_link:
-                        continue
+                        r_link = li.find('a', href=lambda h: h and 'rider/' in h)
+                        if not r_link:
+                            continue
+                        raw = r_link.text.strip()
+                        if raw and len(raw) > 2:
+                            riders_data.append({
+                                "koers_naam": koers_naam,
+                                "startnummer": bib,
+                                "rider": raw,
+                                "team": team_name,
+                            })
+
+        # --- Methode 3: andere startlist_v versies (v2, v3, v5...) ---
+        if not riders_data:
+            container = soup.find(class_=lambda c: c and isinstance(c, list) and
+                any(cls.startswith('startlist_v') for cls in c))
+            if container:
+                for r_link in container.find_all('a', href=lambda h: h and 'rider/' in h):
                     raw = r_link.text.strip()
-                    if raw and len(raw) > 2:
-                        riders_data.append({
-                            "koers_naam": koers_naam,
-                            "startnummer": bib,
-                            "rider": raw,
-                            "team": team_name,
-                        })
-        else:
-            # Fallback: geen container, zoek table.basic (alternatieve PCS layout)
-            table = soup.find('table', class_=lambda c: c and 'basic' in c)
-            if table:
-                for row in (table.find('tbody') or table).find_all('tr'):
-                    r_link = row.find('a', href=lambda h: h and 'rider/' in h)
-                    if not r_link:
+                    if not raw or len(raw) <= 2:
                         continue
-                    raw = r_link.text.strip()
-                    team_link = row.find('a', href=lambda h: h and 'team/' in h)
-                    team_name = team_link.text.strip() if team_link else ""
-                    cols = row.find_all('td')
-                    bib = cols[0].text.strip() if cols and cols[0].text.strip().isdigit() else ""
-                    if raw and len(raw) > 2:
-                        riders_data.append({
-                            "koers_naam": koers_naam,
-                            "startnummer": bib,
-                            "rider": raw,
-                            "team": team_name,
-                        })
+                    parent = r_link.find_parent(class_='ridersCont')
+                    team_name = ""
+                    if parent:
+                        first_a = parent.find('a')
+                        team_name = first_a.text.strip() if first_a and first_a != r_link else ""
+                    riders_data.append({
+                        "koers_naam": koers_naam,
+                        "startnummer": "",
+                        "rider": raw,
+                        "team": team_name,
+                    })
 
         df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
 
         if df_new.empty:
-            return False, "Geen renners gevonden. Is de startlijst al beschikbaar op PCS?"
+            # Debug info: welke classes zitten er wel in de HTML?
+            page_title = soup.title.text.strip() if soup.title else "geen titel"
+            all_classes = set()
+            for tag in soup.find_all(True):
+                for cls in (tag.get('class') or []):
+                    if 'startlist' in cls or 'riders' in cls or 'team' in cls.lower():
+                        all_classes.add(cls)
+            debug = f"Paginatitel: '{page_title}'. Gevonden classes: {sorted(all_classes)[:10]}"
+            return False, f"Geen renners gevonden op PCS. {debug}"
 
         standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
         existing_sl = read_sheet("startlijsten")
