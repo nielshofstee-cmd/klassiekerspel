@@ -861,9 +861,8 @@ def scrape_en_save(koers_naam, url):
                 elif 'team/' in href and not team:
                     team = a.text.strip()
 
-            # Sla op als er een renner gevonden is — accepteer elke rank-waarde
-            # (isdigit = finisher, bekende codes = DNF/OTL/DSQ, maar ook onbekende codes doorlaten)
-            if rider and rank:
+            # Sla op als er een renner gevonden is — sla DNS over (niet gestart = geen punten)
+            if rider and rank and rank.upper() != 'DNS':
                 norm_rank = rank.upper() if not rank.isdigit() else rank
                 data.append([koers_naam, norm_rank, rider, team])
 
@@ -1075,10 +1074,11 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
             except ValueError:
                 rank_int = 999 # Voor DNF/OTL/DSQ
             
-            # Team punten logica: top-3 finishers krijgen GEEN teampunten
+            # Team punten logica: top-3 finishers en DNS krijgen GEEN teampunten
             punten_team = 0
             top3_renner = str(rank) in {"1", "2", "3"}
-            if rt and not top3_renner:
+            is_dns = str(rank).upper() == "DNS"
+            if rt and not top3_renner and not is_dns:
                 if t1 and rt == t1: punten_team += 30
                 if t2 and rt == t2: punten_team += 20
                 if t3 and rt == t3: punten_team += 10
