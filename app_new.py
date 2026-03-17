@@ -7,15 +7,6 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import random
-import cloudscraper
-
-def _maak_scraper():
-    return cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True},
-        delay=10
-    )
-
-_cs = _maak_scraper()
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
@@ -23,7 +14,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 _AMS = ZoneInfo("Europe/Amsterdam")
-from procyclingstats import Stage, RaceStartlist
 
 
 # py -m streamlit run app_new.py         >> C:\Users\hofsteen\OneDrive - HEMA\Niels HEMA\Python projects\wielerspel\Wielerspel 2.0
@@ -788,44 +778,37 @@ def _handmatige_uitslag_opslaan(koers_naam, tekst):
         return False, f"Fout bij opslaan: {str(e)}"
 
 
-# --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
+# --- SCRAPER: requests + BeautifulSoup ---
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+]
+
 def _pcs_get(url, max_pogingen=3):
-    """Haal een URL op met retry-logica en wisselende user-agents."""
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    ]
-    extra_headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://www.google.com/",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-    }
-    wacht = 2
+    """Haal een URL op via requests met retry-logica en wisselende user-agents."""
     laatste_fout = None
     for poging in range(max_pogingen):
         try:
-            scraper = _maak_scraper()
-            scraper.headers.update({"User-Agent": user_agents[poging % len(user_agents)]})
-            scraper.headers.update(extra_headers)
-            time.sleep(random.uniform(2, 5) + wacht * poging)
-            resp = scraper.get(url, timeout=30)
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": _USER_AGENTS[poging % len(_USER_AGENTS)],
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Referer": "https://www.procyclingstats.com/",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            })
+            if poging > 0:
+                time.sleep(random.uniform(2, 4) * poging)
+            resp = session.get(url, timeout=30)
             resp.raise_for_status()
             return resp
         except Exception as e:
             laatste_fout = e
-            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 403:
-                # 403 = geblokkeerd, wacht langer en probeer opnieuw
-                time.sleep(wacht * (poging + 1))
-                continue
-            raise
+            continue
     raise laatste_fout
 
 
@@ -834,7 +817,7 @@ def _pcs_get(url, max_pogingen=3):
 def scrape_en_save(koers_naam, url):
     try:
         full_url = url if url.endswith('/') else url + '/'
-        response = _cs.get(full_url)
+        response = _pcs_get(full_url)
         if response.status_code != 200:
             return False, f"PCS gaf error {response.status_code}"
 
