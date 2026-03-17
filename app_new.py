@@ -985,7 +985,7 @@ def scrape_startlijst_en_save(koers_naam, url):
                         bib = ""
                         bib_el = li.find(class_='bib')
                         if bib_el:
-                            bib_txt = bib_el.get_text(deep=False).split()[0] if bib_el.get_text().strip() else ""
+                            bib_txt = bib_el.text.strip().split()[0] if bib_el.text.strip() else ""
                             bib = bib_txt if bib_txt.isdigit() else ""
 
                         r_link = li.find('a', href=lambda h: h and 'rider/' in h)
