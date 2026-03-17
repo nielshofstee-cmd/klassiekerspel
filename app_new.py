@@ -781,14 +781,34 @@ def _handmatige_uitslag_opslaan(koers_naam, tekst):
 
 # --- SCRAPER: curl_cffi (echte browser TLS-fingerprint) + BeautifulSoup parsing ---
 
-def _pcs_get(url, max_pogingen=3):
+def _pcs_get(url, max_pogingen=4):
     """Haal een PCS-URL op via curl_cffi met Chrome-impersonatie (omzeilt Cloudflare)."""
+    # Probeer meerdere recente Chrome-versies op volgorde
+    impersonate_targets = ["chrome131", "chrome124", "chrome110", "chrome107"]
     laatste_fout = None
     for poging in range(max_pogingen):
         try:
             if poging > 0:
-                time.sleep(random.uniform(3, 6) * poging)
-            resp = cffi_requests.get(url, impersonate="chrome120", timeout=30)
+                time.sleep(random.uniform(2, 5) * poging)
+            target = impersonate_targets[poging % len(impersonate_targets)]
+            # Bouw referer op uit de URL (bijv. race-pagina als referer voor startlist)
+            referer = "https://www.procyclingstats.com/"
+            headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+                "Upgrade-Insecure-Requests": "1",
+                "Referer": referer,
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "same-origin",
+            }
+            resp = cffi_requests.get(url, impersonate=target, headers=headers, timeout=30)
+            if resp.status_code == 403:
+                laatste_fout = Exception(f"HTTP 403 bij poging {poging+1} (impersonate={target}). PCS blokkeert de request.")
+                continue
             resp.raise_for_status()
             return resp
         except Exception as e:
