@@ -1839,30 +1839,6 @@ with tab_admin:
 
                 st.write("---")
 
-                # Handmatige uitslag-invoer als fallback (bijv. als IP geblokkeerd)
-                with st.expander("✍️ Uitslag handmatig invoeren (fallback bij blokkade)"):
-                    st.markdown("""
-Plak de uitslag hieronder in het volgende formaat (één renner per regel):
-```
-1,Mathieu Van Der Poel,Alpecin-Deceuninck
-2,Tom Pidcock,Ineos Grenadiers
-3,Wout Van Aert,Visma-Lease a Bike
-DNF,Tadej Pogacar,UAE Team Emirates
-```
-**Kolommen:** `rank,rider,team` — scheidingsteken is een komma.
-""")
-                    handmatig_koers = st.selectbox("Koers:", ["---"] + koers_lijst, key="handmatig_koers")
-                    handmatig_tekst = st.text_area("Plak hier de uitslag:", height=300, key="handmatig_tekst",
-                                                   placeholder="1,Mathieu Van Der Poel,Alpecin-Deceuninck\n2,Tom Pidcock,Ineos Grenadiers\n...")
-                    if st.button("Sla handmatige uitslag op") and handmatig_koers != "---" and handmatig_tekst.strip():
-                        ok, msg = _handmatige_uitslag_opslaan(handmatig_koers, handmatig_tekst)
-                        if ok:
-                            st.success(f"✅ {msg}")
-                        else:
-                            st.error(f"❌ {msg}")
-                
-                st.write("---")
-                
                 # Optie 2: Alles tegelijk
                 if st.button("Start Scraper voor ALLE koersen"):
                     status_placeholder = st.empty()
@@ -1909,17 +1885,7 @@ DNF,Tadej Pogacar,UAE Team Emirates
         else:
             st.error("Geen koersen gevonden.")
 
-        st.divider()
-        
-        st.subheader("🗑️ Data opschonen")
-        if st.button("Verwijder ALLE uitslagen"):
-            ws_u = sh.worksheet("uitslagen")
-            ws_u.clear()
-            headers = ["koers_naam", "rank", "rider", "team"]
-            ws_u.update([headers])
-            st.success("Alle uitslagen zijn gewist uit de database.")
-            st.cache_data.clear()
-            st.rerun()
+
 
     elif poging != "":
         st.error("Onjuist wachtwoord. Toegang geweigerd.")
