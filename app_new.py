@@ -896,7 +896,7 @@ def scrape_en_save(koers_naam, url):
 
 def scrape_startlijst_en_save(koers_naam, url):
     try:
-        # 1. URL opschonen
+        # 1. URL opschonen naar /startlist
         if '/result' in url:
             url = url.replace('/result', '/startlist')
         elif not url.endswith('/startlist'):
@@ -904,46 +904,79 @@ def scrape_startlijst_en_save(koers_naam, url):
 
         resp = _pcs_get(url)
         soup = BeautifulSoup(resp.text, 'html.parser')
-        
+
         riders_data = []
-        
-        # 2. Zoek de hoofdcontainer van de startlijst (meestal startlist-v1 t/m v8)
-        container = soup.find(['div', 'ul', 'table'], class_=lambda x: x and 'startlist' in x)
+
+        # 2. Zoek de startlijst-container (PCS gebruikt ul.startlist_v1 t/m ul.startlist_v8)
+        container = soup.find('ul', class_=lambda x: x and any(
+            f'startlist_v{i}' in x for i in range(1, 9)
+        ))
+        # Fallback: zoek elke ul/div met 'startlist' in de class
         if not container:
-            container = soup # Fallback naar de hele pagina
+            container = soup.find(['ul', 'div'], class_=lambda x: x and 'startlist' in x)
 
-        # 3. Zoek alle renner-links (bevatten altijd 'rider/')
-        for r_link in container.find_all('a', href=lambda x: x and 'rider/' in x):
-            # Zoek teamnaam door 'omhoog' te kijken in de HTML structuur
-            # We zoeken de dichtstbijzijnde li, div of tr die een team-class heeft
-            team_div = r_link.find_parent(['li', 'div', 'tr'], class_=lambda x: x and 'team' in x)
-            team_name = ""
-            
-            if team_div:
-                # Zoek de teamnaam (vaak een link met 'team/' of een <b> tag)
-                team_header = team_div.find(['b', 'a'], href=lambda x: x and 'team/' in x)
-                if team_header:
-                    team_name = team_header.text.strip()
-            
-            # Formatteer naam (Eerste Letters Hoofdletters)
-            rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
-            
-            # Filter rotzooi (knoppen als 'More', 'Profiles' of icoontjes)
-            if rider_name and len(rider_name) > 3 and rider_name not in ['More', 'Profiles', 'Results', 'Races', 'History']:
-                riders_data.append({
-                    "koers_naam": koers_naam,
-                    "startnummer": "", 
-                    "rider": rider_name,
-                    "team": team_name
-                })
+        if container:
+            # 3a. Structuur per team: <li class="team"> blokken
+            team_blocks = container.find_all('li', class_=lambda x: x and 'team' in x.split())
+            if team_blocks:
+                for team_block in team_blocks:
+                    # Teamnaam: link met 'team/' of eerste <b>
+                    team_link = team_block.find('a', href=lambda x: x and 'team/' in x)
+                    team_name = team_link.text.strip() if team_link else ""
 
-        # 4. Verwerk en voorkom duplicaten
+                    # Alle rennerlinks binnen dit team-blok
+                    for r_link in team_block.find_all('a', href=lambda x: x and 'rider/' in x):
+                        rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
+                        if rider_name and len(rider_name) > 3:
+                            riders_data.append({
+                                "koers_naam": koers_naam,
+                                "startnummer": "",
+                                "rider": rider_name,
+                                "team": team_name
+                            })
+            else:
+                # 3b. Fallback: geen team-blokken, gewoon alle rennerlinks in container
+                for r_link in container.find_all('a', href=lambda x: x and 'rider/' in x):
+                    # Probeer team via dichtstbijzijnde li-parent
+                    parent_li = r_link.find_parent('li', class_=lambda x: x and 'team' in x)
+                    team_name = ""
+                    if parent_li:
+                        t = parent_li.find('a', href=lambda x: x and 'team/' in x)
+                        team_name = t.text.strip() if t else ""
+                    rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
+                    SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics'}
+                    if rider_name and len(rider_name) > 3 and rider_name not in SKIP:
+                        riders_data.append({
+                            "koers_naam": koers_naam,
+                            "startnummer": "",
+                            "rider": rider_name,
+                            "team": team_name
+                        })
+        else:
+            # 4. Geen container gevonden: doorzoek de hele pagina op rennerlinks
+            SKIP = {'More', 'Profiles', 'Results', 'Races', 'History', 'Statistics'}
+            for r_link in soup.find_all('a', href=lambda x: x and 'rider/' in x):
+                team_name = ""
+                parent_li = r_link.find_parent('li', class_=lambda x: x and 'team' in x)
+                if parent_li:
+                    t = parent_li.find('a', href=lambda x: x and 'team/' in x)
+                    team_name = t.text.strip() if t else ""
+                rider_name = ' '.join(w.capitalize() for w in r_link.text.strip().split())
+                if rider_name and len(rider_name) > 3 and rider_name not in SKIP:
+                    riders_data.append({
+                        "koers_naam": koers_naam,
+                        "startnummer": "",
+                        "rider": rider_name,
+                        "team": team_name
+                    })
+
+        # 5. Verwerk en voorkom duplicaten
         df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
 
         if df_new.empty:
-            return False, "PCS heeft de namen nog niet klikbaar staan of de structuur is afwijkend."
+            return False, "Geen renners gevonden. PCS heeft de namen mogelijk nog niet klikbaar of de startlijst is er nog niet."
 
-        # 5. Database bijwerken
+        # 6. Database bijwerken
         existing_sl = read_sheet("startlijsten")
         standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
         
@@ -957,7 +990,7 @@ def scrape_startlijst_en_save(koers_naam, url):
         # Zorg dat de kolommen exact kloppen voor de Google Sheet
         final_sl = final_sl[standard_cols].astype(str).replace('nan', '')
 
-        # 6. Schrijf terug naar Google Sheets
+        # 7. Schrijf terug naar Google Sheets
         ws_sl = sh.worksheet("startlijsten")
         ws_sl.clear()
         ws_sl.update([standard_cols] + final_sl.values.tolist(), range_name='A1')
