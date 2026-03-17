@@ -611,13 +611,24 @@ scopes = [
 
 def get_gspread_client():
     try:
-        if "gcp_service_account" in st.secrets:
-            creds_info = dict(st.secrets["gcp_service_account"])
+        creds_info = None
+        try:
+            if "gcp_service_account" in st.secrets:
+                creds_info = dict(st.secrets["gcp_service_account"])
+        except Exception:
+            pass
+
+        if creds_info:
             if "\\n" in creds_info["private_key"]:
                 creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
             credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         else:
-            credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+            google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
+            if google_creds_env:
+                creds_info = json.loads(google_creds_env)
+                credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+            else:
+                credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
         return gspread.authorize(credentials)
     except Exception as e:
         st.error(f"❌ Verbinding met Google mislukt: {e}")
@@ -628,7 +639,10 @@ gc = get_gspread_client()
 
 # --- HET WACHTWOORD INSTELLEN ---
 # We kijken eerst in secrets.toml, dan in de environment, en anders een harde fallback
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "kankerbuffel"))
+try:
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "kankerbuffel"))
+except Exception:
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "kankerbuffel")
 
 if gc:
     try:
