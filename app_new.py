@@ -1325,25 +1325,18 @@ with tab_klas:
                 st.line_chart(df_pivot)
 
         with tab5:
-            df_winnaars = read_sheet("Eindwinnaars")
-            if df_winnaars.empty:
-                st.info("Geen historische winnaars gevonden.")
-            else:
-                # Normaliseer kolomnamen
-                df_winnaars.columns = [c.strip().lower() for c in df_winnaars.columns]
-                # Zorg dat jaar als geheel getal getoond wordt
-                if 'jaar' in df_winnaars.columns:
-                    df_winnaars['jaar'] = df_winnaars['jaar'].astype(str).str.replace(r'\.0$', '', regex=True)
-                col_rename = {}
-                for c in df_winnaars.columns:
-                    if c == 'jaar':
-                        col_rename[c] = 'Jaar'
-                    elif 'kamer' in c:
-                        col_rename[c] = 'Kamer 1'
-                    elif 'sammeke' in c:
-                        col_rename[c] = 'Sammeke'
-                df_winnaars = df_winnaars.rename(columns=col_rename)
-                st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
+            try:
+                ws_w = sh.worksheet("Eindwinnaars")
+                rows = ws_w.get_all_values()
+                if len(rows) < 2:
+                    st.info("Geen historische winnaars gevonden.")
+                else:
+                    headers = [c.strip() for c in rows[0]]
+                    df_winnaars = pd.DataFrame(rows[1:], columns=headers)
+                    df_winnaars = df_winnaars.replace('', '-')
+                    st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
+            except Exception as e:
+                st.error(f"Fout bij laden van eindwinnaars: {e}")
 
 # =============================================
 # 2. UITSLAG PER KOERS
