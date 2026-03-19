@@ -1326,15 +1326,24 @@ with tab_klas:
 
         with tab5:
             try:
-                ws_w = sh.worksheet("Eindwinnaars")
-                rows = ws_w.get_all_values()
-                if len(rows) < 2:
-                    st.info("Geen historische winnaars gevonden.")
+                sh_fresh = gc.open_by_url(SPREADSHEET_URL)
+                ws_w = None
+                for ws in sh_fresh.worksheets():
+                    if ws.title.strip().lower() == "eindwinnaars":
+                        ws_w = ws
+                        break
+                if ws_w is None:
+                    beschikbaar = [ws.title for ws in sh_fresh.worksheets()]
+                    st.error(f"Tabblad 'Eindwinnaars' niet gevonden. Beschikbaar: {beschikbaar}")
                 else:
-                    headers = [c.strip() for c in rows[0]]
-                    df_winnaars = pd.DataFrame(rows[1:], columns=headers)
-                    df_winnaars = df_winnaars.replace('', '-')
-                    st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
+                    rows = ws_w.get_all_values()
+                    if len(rows) < 2:
+                        st.info("Geen historische winnaars gevonden.")
+                    else:
+                        headers = [c.strip() for c in rows[0]]
+                        df_winnaars = pd.DataFrame(rows[1:], columns=headers)
+                        df_winnaars = df_winnaars.replace('', '-')
+                        st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
             except Exception as e:
                 st.error(f"Fout bij laden van eindwinnaars: {e}")
 
