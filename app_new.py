@@ -1354,7 +1354,10 @@ with tab_klas:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def genereer_voorbeschouwing(koers_naam: str, renners_tekst: str, spelers_info: str) -> str:
-    api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+    except Exception:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return "_Geen ANTHROPIC_API_KEY gevonden in secrets. Voeg deze toe om voorbeschouwingen te genereren._"
     client = anthropic.Anthropic(api_key=api_key)
