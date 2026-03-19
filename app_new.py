@@ -1227,7 +1227,7 @@ with tab_klas:
                 scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Laatste": laatste_score, "Poules": poule_lijst})
 
         df_scores = pd.DataFrame(scores)
-        tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop", "🏅 Eindwinnaars"])
 
         # Bereken vorige stand (op één na laatste koers) voor pijltjes
         def bereken_vorige_stand(history_data, koersen_gehad, spelers=None):
@@ -1323,6 +1323,27 @@ with tab_klas:
                 df_pivot = df_pivot[eindstand.index]
                 
                 st.line_chart(df_pivot)
+
+        with tab5:
+            df_winnaars = read_sheet("winnaars")
+            if df_winnaars.empty:
+                st.info("Geen historische winnaars gevonden.")
+            else:
+                # Normaliseer kolomnamen
+                df_winnaars.columns = [c.strip().lower() for c in df_winnaars.columns]
+                # Zorg dat jaar als geheel getal getoond wordt
+                if 'jaar' in df_winnaars.columns:
+                    df_winnaars['jaar'] = df_winnaars['jaar'].astype(str).str.replace(r'\.0$', '', regex=True)
+                col_rename = {}
+                for c in df_winnaars.columns:
+                    if c == 'jaar':
+                        col_rename[c] = 'Jaar'
+                    elif 'kamer' in c:
+                        col_rename[c] = 'Kamer 1'
+                    elif 'sammeke' in c:
+                        col_rename[c] = 'Sammeke'
+                df_winnaars = df_winnaars.rename(columns=col_rename)
+                st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
 
 # =============================================
 # 2. UITSLAG PER KOERS
