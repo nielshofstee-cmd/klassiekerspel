@@ -1325,7 +1325,7 @@ with tab_klas:
                 st.line_chart(df_pivot)
 
         with tab5:
-            df_winnaars = read_sheet("winnaars")
+            df_winnaars = read_sheet("Eindwinnaars")
             if df_winnaars.empty:
                 st.info("Geen historische winnaars gevonden.")
             else:
