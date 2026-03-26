@@ -1638,9 +1638,18 @@ with tab_captains:
         laatste_gestart = gestart[-1] if gestart else None
         toon_koersen = ([laatste_gestart] if laatste_gestart else []) + toekomst
 
-        matrix_data = []
+        # Bouw HTML tabel
+        th_style = "padding:6px 10px;background:#1a2e4a;color:white;font-size:12px;text-align:center;white-space:nowrap;"
+        td_speler = "padding:6px 10px;font-size:13px;font-weight:600;white-space:nowrap;border-bottom:1px solid #e2e8f0;"
+        td_base = "padding:6px 10px;font-size:13px;text-align:center;border-bottom:1px solid #e2e8f0;vertical-align:top;"
+
+        html = f'<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="{th_style}text-align:left;">Speler</th>'
+        for koers in toon_koersen:
+            html += f'<th style="{th_style}">{koers}</th>'
+        html += "</tr></thead><tbody>"
+
         for speler in spelers_ov:
-            rij = {"Speler": speler}
+            html += f'<tr><td style="{td_speler}">{speler}</td>'
             for koers in toon_koersen:
                 start_dt = datetime.strptime(KOERS_DATA[koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
                 keuze = k_all[(k_all['speler_naam'] == speler) & (k_all['koers_naam'] == koers)]
@@ -1648,23 +1657,19 @@ with tab_captains:
                 if start_dt <= nu_ov:
                     if heeft_keuze:
                         r = keuze.iloc[0]
-                        rij[koers] = f"1. {r['captain_1']}\n2. {r['captain_2']}\n3. {r['captain_3']}"
+                        cel = f"1. {r['captain_1']}<br>2. {r['captain_2']}<br>3. {r['captain_3']}"
                     else:
-                        rij[koers] = "—"
+                        cel = "—"
+                    html += f'<td style="{td_base}">{cel}</td>'
                 else:
-                    rij[koers] = "✓" if heeft_keuze else "✗"
-            matrix_data.append(rij)
+                    if heeft_keuze:
+                        html += f'<td style="{td_base}color:green;font-weight:bold;font-size:16px;">✓</td>'
+                    else:
+                        html += f'<td style="{td_base}color:red;font-weight:bold;font-size:16px;">✗</td>'
+            html += "</tr>"
+        html += "</tbody></table>"
 
-        def _style_captain(val):
-            if val == "✓":
-                return "color: green; font-weight: bold"
-            elif val == "✗":
-                return "color: red; font-weight: bold"
-            return ""
-
-        df_ov = pd.DataFrame(matrix_data).set_index("Speler")
-        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * 70
-        st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True, height=ov_height)
+        st.markdown(html, unsafe_allow_html=True)
 
         st.divider()
         naam = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="select_speler")
