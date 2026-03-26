@@ -1638,10 +1638,6 @@ with tab_captains:
         laatste_gestart = gestart[-1] if gestart else None
         toon_koersen = ([laatste_gestart] if laatste_gestart else []) + toekomst
 
-        def achternaam(naam):
-            parts = str(naam).strip().split()
-            return parts[0] if parts else naam
-
         matrix_data = []
         for speler in spelers_ov:
             rij = {"Speler": speler}
@@ -1652,7 +1648,7 @@ with tab_captains:
                 if start_dt <= nu_ov:
                     if heeft_keuze:
                         r = keuze.iloc[0]
-                        rij[koers] = f"{achternaam(r['captain_1'])}, {achternaam(r['captain_2'])}, {achternaam(r['captain_3'])}"
+                        rij[koers] = f"1. {r['captain_1']}\n2. {r['captain_2']}\n3. {r['captain_3']}"
                     else:
                         rij[koers] = "—"
                 else:
@@ -1667,7 +1663,7 @@ with tab_captains:
             return ""
 
         df_ov = pd.DataFrame(matrix_data).set_index("Speler")
-        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * TABLE_ROW_HEIGHT
+        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * TABLE_ROW_HEIGHT * 3
         st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True, height=ov_height)
 
         st.divider()
