@@ -1640,7 +1640,7 @@ with tab_captains:
 
         def achternaam(naam):
             parts = str(naam).strip().split()
-            return parts[-1] if parts else naam
+            return parts[0] if parts else naam
 
         matrix_data = []
         for speler in spelers_ov:
@@ -1667,7 +1667,8 @@ with tab_captains:
             return ""
 
         df_ov = pd.DataFrame(matrix_data).set_index("Speler")
-        st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True)
+        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * TABLE_ROW_HEIGHT
+        st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True, height=ov_height)
 
         st.divider()
         naam = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="select_speler")
@@ -1776,7 +1777,7 @@ with tab_captains:
                     st.write("Jouw keuzes voor alle koersen:")
                     mijn_tabel = k_all[k_all['speler_naam'] == naam].copy()
                     if not mijn_tabel.empty:
-                        st.dataframe(mijn_tabel[['koers_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True)
+                        st.dataframe(mijn_tabel[['koers_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(mijn_tabel) * TABLE_ROW_HEIGHT)
                     else:
                         st.info("Je hebt nog geen captains ingesteld.")
 
@@ -1792,7 +1793,7 @@ with tab_captains:
                         st.write(f"🔓 De koers is gestart! Hier zijn de keuzes voor {bekijk_koers}:")
                         andere_keuzes = k_all[k_all['koers_naam'] == bekijk_koers].copy()
                         if not andere_keuzes.empty:
-                            st.dataframe(andere_keuzes[['speler_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True)
+                            st.dataframe(andere_keuzes[['speler_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(andere_keuzes) * TABLE_ROW_HEIGHT)
                         else:
                             st.info("Niemand heeft captains ingevuld voor deze koers.")
             else:
