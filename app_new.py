@@ -1652,8 +1652,15 @@ with tab_captains:
                     rij[koers] = "✓" if heeft_keuze else "✗"
             matrix_data.append(rij)
 
+        def _style_captain(val):
+            if val == "✓":
+                return "color: green; font-weight: bold"
+            elif val == "✗":
+                return "color: red; font-weight: bold"
+            return ""
+
         df_ov = pd.DataFrame(matrix_data).set_index("Speler")
-        st.dataframe(df_ov, use_container_width=True)
+        st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True)
 
         st.divider()
         naam = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="select_speler")
