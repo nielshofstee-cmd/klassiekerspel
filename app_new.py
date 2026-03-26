@@ -1633,22 +1633,29 @@ with tab_captains:
         alle_koersen_ov = list(KOERS_DATA.keys())
         spelers_ov = sorted(s_all['speler_naam'].unique())
 
+        gestart = [k for k in alle_koersen_ov if datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS) <= nu_ov]
+        toekomst = [k for k in alle_koersen_ov if datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS) > nu_ov]
+        laatste_gestart = gestart[-1] if gestart else None
+        toon_koersen = ([laatste_gestart] if laatste_gestart else []) + toekomst
+
+        def achternaam(naam):
+            parts = str(naam).strip().split()
+            return parts[-1] if parts else naam
+
         matrix_data = []
         for speler in spelers_ov:
             rij = {"Speler": speler}
-            for koers in alle_koersen_ov:
+            for koers in toon_koersen:
                 start_dt = datetime.strptime(KOERS_DATA[koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
                 keuze = k_all[(k_all['speler_naam'] == speler) & (k_all['koers_naam'] == koers)]
                 heeft_keuze = not keuze.empty and str(keuze.iloc[0]['captain_1']).strip() != ""
-                if nu_ov >= start_dt:
-                    # Koers gestart: toon captain namen
+                if start_dt <= nu_ov:
                     if heeft_keuze:
                         r = keuze.iloc[0]
-                        rij[koers] = f"{r['captain_1']}, {r['captain_2']}, {r['captain_3']}"
+                        rij[koers] = f"{achternaam(r['captain_1'])}, {achternaam(r['captain_2'])}, {achternaam(r['captain_3'])}"
                     else:
                         rij[koers] = "—"
                 else:
-                    # Koers nog niet gestart: alleen invul-status
                     rij[koers] = "✓" if heeft_keuze else "✗"
             matrix_data.append(rij)
 
