@@ -1109,7 +1109,7 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
         excel_clean = ultra_clean(renner_naam_excel)
         match_res = process.extractOne(excel_clean, pcs_clean_namen, scorer=fuzz.token_set_ratio)
         
-        if match_res and match_res[1] > 85:
+        if match_res and match_res[1] > 75:
             best_match_clean = match_res[0]
             data = u_dict[best_match_clean]
             rank, rt = data['rank'], data['team']
