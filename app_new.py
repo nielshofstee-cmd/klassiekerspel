@@ -1872,7 +1872,85 @@ with tab_admin:
             st.info("De startlijsten-database is nog leeg.")
 
         st.divider()
-        
+
+        # --- EMAIL REMINDERS ---
+        st.subheader("📧 Email Reminders")
+        reminder_koersen = list(KOERS_DATA.keys())
+        reminder_koers = st.selectbox("Koers waarvoor je reminders wil sturen:", reminder_koersen, index=get_standaard_koers_index(reminder_koersen), key="reminder_koers")
+
+        if st.button("Stuur reminders naar spelers zonder captains"):
+            import smtplib
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            gmail_user = os.environ.get("GMAIL_USER")
+            gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
+
+            if not gmail_user or not gmail_password:
+                st.error("GMAIL_USER of GMAIL_APP_PASSWORD niet ingesteld als environment variable.")
+            else:
+                spelers_mail = read_sheet("speler_teams")
+                keuzes_mail = read_sheet("keuzes")
+
+                if "email" not in spelers_mail.columns:
+                    st.error("Kolom 'email' ontbreekt in de speler_teams sheet.")
+                else:
+                    deadline_str = KOERS_DATA[reminder_koers]
+                    deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                    deadline_mooi = deadline_dt.strftime("%d-%m-%Y om %H:%M")
+
+                    speler_info = (
+                        spelers_mail[["speler_naam", "email"]]
+                        .drop_duplicates("speler_naam")
+                    )
+
+                    verzonden, overgeslagen = [], []
+                    for _, row in speler_info.iterrows():
+                        speler_naam = row["speler_naam"]
+                        email = str(row["email"]).strip()
+                        if not email or email.lower() == "nan":
+                            overgeslagen.append(f"{speler_naam} (geen e-mail)")
+                            continue
+
+                        keuze = keuzes_mail[
+                            (keuzes_mail["speler_naam"] == speler_naam) &
+                            (keuzes_mail["koers_naam"] == reminder_koers)
+                        ]
+                        heeft_captain = (
+                            not keuze.empty and
+                            str(keuze.iloc[0]["captain_1"]).strip() not in ("", "nan")
+                        )
+                        if heeft_captain:
+                            overgeslagen.append(f"{speler_naam} (al ingevuld)")
+                            continue
+
+                        try:
+                            msg = MIMEMultipart()
+                            msg["From"] = gmail_user
+                            msg["To"] = email
+                            msg["Subject"] = f"⏰ Reminder: Captains nog niet ingevuld voor {reminder_koers}"
+                            msg.attach(MIMEText(
+                                f"Hoi {speler_naam},\n\nJe hebt nog geen captains ingevuld voor {reminder_koers}!\n\n"
+                                f"De deadline is {deadline_mooi} uur.\n\n"
+                                f"Ga snel naar het klassiekerspel en vul je captains in.\n\nGroeten,\nK1xSam Klassiekerspel",
+                                "plain"
+                            ))
+                            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                                server.login(gmail_user, gmail_password)
+                                server.sendmail(gmail_user, email, msg.as_string())
+                            verzonden.append(f"{speler_naam} ({email})")
+                        except Exception as e:
+                            overgeslagen.append(f"{speler_naam} (fout: {e})")
+
+                    if verzonden:
+                        st.success(f"✅ Reminder verstuurd naar {len(verzonden)} speler(s): {', '.join(verzonden)}")
+                    else:
+                        st.info("Geen reminders verstuurd — iedereen heeft al captains ingevuld.")
+                    if overgeslagen:
+                        st.caption(f"Overgeslagen: {', '.join(overgeslagen)}")
+
+        st.divider()
+
         col1, col2 = st.columns(2)
         
         with col1:
