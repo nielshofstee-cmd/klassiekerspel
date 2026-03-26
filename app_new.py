@@ -1626,6 +1626,36 @@ with tab_captains:
     st.title("©️ Captains Beheer")
 
     if not s_all.empty:
+
+        # --- PUBLIEK OVERZICHT (geen login vereist) ---
+        st.subheader("📋 Overzicht Captains")
+        nu_ov = datetime.now(_AMS)
+        alle_koersen_ov = list(KOERS_DATA.keys())
+        spelers_ov = sorted(s_all['speler_naam'].unique())
+
+        matrix_data = []
+        for speler in spelers_ov:
+            rij = {"Speler": speler}
+            for koers in alle_koersen_ov:
+                start_dt = datetime.strptime(KOERS_DATA[koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                keuze = k_all[(k_all['speler_naam'] == speler) & (k_all['koers_naam'] == koers)]
+                heeft_keuze = not keuze.empty and str(keuze.iloc[0]['captain_1']).strip() != ""
+                if nu_ov >= start_dt:
+                    # Koers gestart: toon captain namen
+                    if heeft_keuze:
+                        r = keuze.iloc[0]
+                        rij[koers] = f"{r['captain_1']}, {r['captain_2']}, {r['captain_3']}"
+                    else:
+                        rij[koers] = "—"
+                else:
+                    # Koers nog niet gestart: alleen invul-status
+                    rij[koers] = "✓" if heeft_keuze else "✗"
+            matrix_data.append(rij)
+
+        df_ov = pd.DataFrame(matrix_data).set_index("Speler")
+        st.dataframe(df_ov, use_container_width=True)
+
+        st.divider()
         naam = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="select_speler")
         pin = st.text_input("Voer je pincode in:", type="password")
         
