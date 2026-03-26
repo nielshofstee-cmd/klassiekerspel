@@ -13,7 +13,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import anthropic
 
 _AMS = ZoneInfo("Europe/Amsterdam")
 
@@ -1163,9 +1162,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-PAGINA_OPTIES = ["🏆 Klassement", "🔭 Voorbeschouwing", "🏁 Uitslagen", "🚦 Startlijsten", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "⚙️ Beheer"]
+PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "⚙️ Beheer"]
 
-tab_klas, tab_voorb, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
+tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
 # Data inladen via Google Sheets
 u_all = read_sheet("uitslagen")
@@ -1349,128 +1348,7 @@ with tab_klas:
                 st.error(f"Fout bij laden van eindwinnaars: {e}")
 
 # =============================================
-# 2. VOORBESCHOUWING
-# =============================================
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def genereer_voorbeschouwing(koers_naam: str, renners_tekst: str, spelers_info: str) -> str:
-    try:
-        api_key = st.secrets.get("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
-    except Exception:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return "_Geen ANTHROPIC_API_KEY gevonden in secrets. Voeg deze toe om voorbeschouwingen te genereren._"
-    client = anthropic.Anthropic(api_key=api_key)
-    prompt = f"""Je bent een enthousiaste wielercommentator voor een privé-klassiekerspel.
-Schrijf een korte, pakkende voorbeschouwing (±200 woorden) in het Nederlands voor de volgende koers: **{koers_naam}**.
-
-De deelnemers aan ons klassiekerspel zijn:
-{spelers_info}
-
-Startlijst van de koers (renner – ploeg):
-{renners_tekst}
-
-Richtlijnen:
-- Noem de topfavorieten voor de overwinning op basis van de startlijst.
-- Bespreek kort het parcours/karakter van de koers.
-- Geef aan welke renners interessant kunnen zijn voor de spelers in ons spel.
-- Sluit af met een spannende slotzin.
-- Schrijf levendig en toegankelijk, niet te technisch."""
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return message.content[0].text
-
-
-def get_volgende_koers(u_all, koersen_volgorde):
-    """Geeft de eerstvolgende koers zonder uitslag, of de laatste koers als alle al gespeeld zijn."""
-    koersen_met_uitslag = set(u_all['koers_naam'].unique()) if not u_all.empty else set()
-    nu = datetime.now(_AMS)
-    kandidaten = []
-    for naam in koersen_volgorde:
-        if naam not in koersen_met_uitslag and naam in KOERS_DATA:
-            try:
-                dl = datetime.strptime(KOERS_DATA[naam], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
-                kandidaten.append((naam, dl))
-            except Exception:
-                kandidaten.append((naam, datetime.max.replace(tzinfo=_AMS)))
-    if kandidaten:
-        kandidaten.sort(key=lambda x: x[1])
-        return kandidaten[0][0]
-    return koersen_volgorde[-1] if koersen_volgorde else None
-
-
-with tab_voorb:
-    st.title("🔭 Voorbeschouwing")
-    sl_voorb = read_sheet("startlijsten")
-    volgende = get_volgende_koers(u_all, koersen_volgorde)
-
-    if not koersen_volgorde:
-        st.info("Geen koersen gevonden.")
-    else:
-        # Koersselectie – standaard de volgende koers
-        idx_voorb = koersen_volgorde.index(volgende) if volgende in koersen_volgorde else 0
-        gekozen_voorb = st.selectbox(
-            "Koers:", koersen_volgorde, index=idx_voorb, key="voorb_koers_select"
-        )
-
-        # Startlijst tonen
-        if sl_voorb is None or sl_voorb.empty:
-            st.info("Nog geen startlijsten beschikbaar. Scrape ze eerst via de Beheer pagina.")
-            renners_voor_ai = ""
-        else:
-            sl_koers = sl_voorb[sl_voorb['koers_naam'] == gekozen_voorb].copy()
-            if sl_koers.empty:
-                st.info(f"Geen startlijst beschikbaar voor {gekozen_voorb}.")
-                renners_voor_ai = ""
-            else:
-                col_r, col_t = ("rider", "team") if "rider" in sl_koers.columns else (sl_koers.columns[1], sl_koers.columns[2])
-                st.subheader(f"Startlijst: {gekozen_voorb} ({len(sl_koers)} renners)")
-                st.dataframe(sl_koers[[col_r, col_t]].reset_index(drop=True), hide_index=True, use_container_width=True)
-                renners_voor_ai = "\n".join(
-                    f"{row[col_r]} – {row[col_t]}" for _, row in sl_koers.iterrows()
-                )
-
-        st.divider()
-        st.subheader("AI Voorbeschouwing")
-
-        # Bouw context over spelers + hun renners
-        if not s_all.empty and renners_voor_ai:
-            speler_lijnen = []
-            koers_dt_str = KOERS_DATA.get(gekozen_voorb, "2026-01-01 00:00").split(" ")[0]
-            k_dt_voorb = pd.to_datetime(koers_dt_str)
-            sl_namen_lower = {r.lower() for r in sl_koers[col_r].tolist()} if renners_voor_ai else set()
-            for speler in sorted(s_all['speler_naam'].unique()):
-                sp_rows = s_all[s_all['speler_naam'] == speler].copy()
-                mask = (
-                    (pd.to_datetime(sp_rows['vanaf_datum']) <= k_dt_voorb) &
-                    (
-                        sp_rows['tot_datum'].isna() |
-                        (sp_rows['tot_datum'] == "") |
-                        (pd.to_datetime(sp_rows['tot_datum'], errors='coerce') > k_dt_voorb)
-                    )
-                )
-                renners_sp = sp_rows[mask]['renner_naam'].tolist()
-                op_start = [r for r in renners_sp if r.lower() in sl_namen_lower]
-                speler_lijnen.append(f"{speler}: {', '.join(renners_sp) or '–'} (op startlijst: {', '.join(op_start) or 'niemand'})")
-            spelers_info_tekst = "\n".join(speler_lijnen)
-        else:
-            spelers_info_tekst = "Geen spelersdata beschikbaar."
-
-        if not renners_voor_ai:
-            st.info("Voeg eerst een startlijst toe om een voorbeschouwing te genereren.")
-        else:
-            if st.button("🤖 Genereer voorbeschouwing", key="gen_voorb_btn"):
-                st.cache_data.clear()
-            with st.spinner("AI genereert voorbeschouwing..."):
-                tekst = genereer_voorbeschouwing(gekozen_voorb, renners_voor_ai, spelers_info_tekst)
-            st.markdown(tekst)
-
-
-# =============================================
-# 3. UITSLAG PER KOERS
+# 2. UITSLAG PER KOERS
 # =============================================
 with tab_uitslag:
     st.title("🏁 Koersuitslag & Puntenverdeling")
