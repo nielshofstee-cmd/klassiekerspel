@@ -4,18 +4,10 @@ import unicodedata
 import streamlit as st
 import pandas as pd
 import requests
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 import time
 import random
-import cloudscraper
-
-def _maak_scraper():
-    return cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True},
-        delay=10
-    )
-
-_cs = _maak_scraper()
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
@@ -23,7 +15,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 _AMS = ZoneInfo("Europe/Amsterdam")
-from procyclingstats import Stage, RaceStartlist
 
 
 # py -m streamlit run app_new.py         >> C:\Users\hofsteen\OneDrive - HEMA\Niels HEMA\Python projects\wielerspel\Wielerspel 2.0
@@ -604,56 +595,86 @@ hr {
 """, unsafe_allow_html=True)
 
 # --- DATABASE CONFIGURATIE & VERBINDING ---
-scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
+def get_gspread_client():
+    try:
+        creds_info = None
+        try:
+            if "gcp_service_account" in st.secrets:
+                creds_info = dict(st.secrets["gcp_service_account"])
+        except Exception:
+            pass
+
+        if creds_info:
+            if "\\n" in creds_info["private_key"]:
+                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+        else:
+            google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
+            if google_creds_env:
+                creds_info = json.loads(google_creds_env)
+                credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+            else:
+                credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception as e:
+        st.error(f"❌ Verbinding met Google mislukt: {e}")
+        return None
+
+# Initialiseer de verbinding
+gc = get_gspread_client()
+
+# --- HET WACHTWOORD INSTELLEN ---
+# We kijken eerst in secrets.toml, dan in de environment, en anders een harde fallback
 try:
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or st.secrets.get("ADMIN_PASSWORD", "")
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "kankerbuffel"))
 except Exception:
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "kankerbuffel")
 
-# Credentials laden: via environment variable (Railway) of lokaal JSON bestand
-google_creds_env = os.environ.get("GOOGLE_CREDENTIALS")
-if google_creds_env:
-    creds_dict = json.loads(google_creds_env)
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+if gc:
+    try:
+        SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1i8UB1igCk8cSCneTeQEGkxO0XFsuhSP2u4BLZfwHllM/edit"
+        sh = gc.open_by_url(SPREADSHEET_URL)
+    except Exception as e:
+        st.error(f"❌ De Google Sheet kon niet worden geopend: {e}")
+        st.stop()
 else:
-    credentials = Credentials.from_service_account_file("google_keys.json", scopes=scopes)
+    st.stop()
 
-gc = gspread.authorize(credentials)
+# --- HULPFUNCTIES VOOR DATA ---
 
-# 3. Open de sheet
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1i8UB1igCk8cSCneTeQEGkxO0XFsuhSP2u4BLZfwHllM/edit"
-sh = gc.open_by_url(SPREADSHEET_URL)
-
-# 4. Hulpfunctie om data te lezen met CACHING (tegen de 429 error)
 @st.cache_data(ttl=60) # Onthoud de data voor 60 seconden
 def read_sheet(worksheet_name):
     try:
-        # Een kleine random pauze helpt om niet tegelijk met andere verzoeken binnen te komen
+        # Een kleine random pauze helpt tegen de '429 Too Many Requests' error
         time.sleep(random.uniform(0.5, 1.5)) 
         worksheet = sh.worksheet(worksheet_name)
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
+        # Clean de kolommen (kleine letters, geen spaties)
         df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception as e:
         if "429" in str(e):
-            st.error("Google limiet bereikt. Wacht 10 seconden en ververs de pagina.")
+            st.error("Google limiet bereikt. Wacht even en ververs de pagina.")
         else:
             st.error(f"Fout bij laden van {worksheet_name}: {e}")
         return pd.DataFrame()
 
-
 def get_koersen_volgorde():
     try:
-        # Gebruik de nieuwe hulpfunctie om de koersen op te halen
         df_k = read_sheet("koersen")
-        if not df_k.empty:
+        if not df_k.empty and 'koers_naam' in df_k.columns:
             return df_k['koers_naam'].tolist()
         return []
-    except Exception as e:
+    except Exception:
         return []
 
+# --- CONSTANTEN ---
 PUNTEN_SCHEMA = {
     1:100, 2:90, 3:80, 4:70, 5:64, 6:60, 7:56, 8:52, 9:48, 10:44,
     11:40, 12:36, 13:32, 14:28, 15:24, 16:20, 17:16, 18:12, 19:8, 20:4
@@ -758,166 +779,281 @@ def _handmatige_uitslag_opslaan(koers_naam, tekst):
         return False, f"Fout bij opslaan: {str(e)}"
 
 
-# --- SCRAPER AANGEPAST VOOR FINISHERS + DNF, OTL, DSQ (EXCL. DNS) ---
-def _pcs_get(url, max_pogingen=3):
-    """Haal een URL op met retry-logica en wisselende user-agents."""
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    ]
-    extra_headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://www.google.com/",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-    }
-    wacht = 2
+# --- SCRAPER: curl_cffi (echte browser TLS-fingerprint) + BeautifulSoup parsing ---
+
+def _pcs_get(url, max_pogingen=4):
+    """Haal een PCS-URL op via curl_cffi met Chrome-impersonatie (omzeilt Cloudflare)."""
+    # Probeer meerdere recente Chrome-versies op volgorde
+    impersonate_targets = ["chrome131", "chrome124", "chrome110", "chrome107"]
     laatste_fout = None
     for poging in range(max_pogingen):
         try:
-            scraper = _maak_scraper()
-            scraper.headers.update({"User-Agent": user_agents[poging % len(user_agents)]})
-            scraper.headers.update(extra_headers)
-            time.sleep(random.uniform(2, 5) + wacht * poging)
-            resp = scraper.get(url, timeout=30)
+            if poging > 0:
+                time.sleep(random.uniform(2, 5) * poging)
+            target = impersonate_targets[poging % len(impersonate_targets)]
+            # Bouw referer op uit de URL (bijv. race-pagina als referer voor startlist)
+            referer = "https://www.procyclingstats.com/"
+            headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+                "Upgrade-Insecure-Requests": "1",
+                "Referer": referer,
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "same-origin",
+            }
+            resp = cffi_requests.get(url, impersonate=target, headers=headers, timeout=30)
+            if resp.status_code == 403:
+                laatste_fout = Exception(f"HTTP 403 bij poging {poging+1} (impersonate={target}). PCS blokkeert de request.")
+                continue
             resp.raise_for_status()
             return resp
         except Exception as e:
             laatste_fout = e
-            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 403:
-                # 403 = geblokkeerd, wacht langer en probeer opnieuw
-                time.sleep(wacht * (poging + 1))
-                continue
-            raise
+            continue
     raise laatste_fout
 
 
+# --- SCRAPER LOGICA ---
+
 def scrape_en_save(koers_naam, url):
+    """
+    Scrapt de uitslag van een PCS result-pagina.
+    PCS HTML-structuur (results):
+      <table class="results basic moblist10 ...">
+        <tbody>
+          <tr>
+            <td><span>1</span></td>           <!-- rank, soms in span -->
+            <td>...</td>                       <!-- vlag -->
+            <td><a href="rider/...">NAAM</a></td>
+            <td><a href="team/...">TEAM</a></td>
+            <td>3:03:15</td>
+            ...
+          </tr>
+          <!-- DNF/OTL/DSQ rijen: rank-cel bevat de tekst direct -->
+        </tbody>
+      </table>
+    """
     try:
-        # Haal het relatieve pad op uit de volledige URL
-        relatief_pad = url.replace("https://www.procyclingstats.com/", "").strip("/")
-        resp = _pcs_get(url)
-        resp.raise_for_status()
-        stage = Stage(relatief_pad, html=resp.text, update_html=False)
-        resultaten = stage.results()
-        if not resultaten:
-            return False, "Geen resultaten gevonden via procyclingstats package."
+        full_url = url.rstrip('/') + '/'
+        response = _pcs_get(full_url)
 
-        # 1. Haal huidige uitslagen op om te filteren
-        existing_df = read_sheet("uitslagen")
-        standard_cols = ['koers_naam', 'rank', 'rider', 'team']
-        if not existing_df.empty:
-            other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
-        else:
-            other_races_df = pd.DataFrame(columns=standard_cols)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-        # 2. Verwerk de resultaten
-        toegestane_statussen = ["DNF", "OTL", "DSQ", "DNS"]
-        temp_data = []
-        for r in resultaten:
-            # Rank kan in verschillende velden zitten afhankelijk van de package versie
-            rank = str(r.get('rank', r.get('status', r.get('result', '')))).upper().strip()
-            rider_raw = r.get('rider_name', '').strip()
-            rider = ' '.join(w.capitalize() for w in rider_raw.split())
-            team = r.get('team_name', '').strip()
-            is_getal = rank.isdigit()
-            is_uitvaller = rank in toegestane_statussen
-            # Voeg toe als gefinisht, uitgevallen, OF als er een team bekend is (vangt edge cases op)
-            if rider and (is_getal or is_uitvaller):
-                temp_data.append({
-                    "koers_naam": koers_naam,
-                    "rank": rank,
-                    "rider": rider,
-                    "team": team
-                })
-            elif rider and team and not is_getal:
-                # Vangnet: renner heeft geen getal als rank maar wel een team -> DNF
-                temp_data.append({
-                    "koers_naam": koers_naam,
-                    "rank": "DNF",
-                    "rider": rider,
-                    "team": team
-                })
+        # Anti-bot check: als Cloudflare challenge wordt teruggegeven
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
 
-        if not temp_data:
-            return False, "Geen renners verwerkt uit de resultaten."
+        # Zoek de resultatentabel — PCS gebruikt class 'results' (soms met extra klassen)
+        table = soup.find('table', class_=lambda c: c and 'results' in c)
+        if not table:
+            # Fallback: elke tabel met een tbody die rider-links bevat
+            for t in soup.find_all('table'):
+                if t.find('a', href=lambda h: h and 'rider/' in h):
+                    table = t
+                    break
 
-        new_scraped_df = pd.DataFrame(temp_data)
-        final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
-        final_df = final_df[standard_cols]
+        if not table:
+            return False, "Geen uitslag tabel gevonden op deze pagina."
 
+        data = []
+        tbody = table.find('tbody') or table
+        for row in tbody.find_all('tr'):
+            cols = row.find_all('td')
+            if len(cols) < 2:
+                continue
+
+            # Rank: PCS zet het getal soms in een <span> binnen de eerste <td>
+            rank_td = cols[0]
+            span = rank_td.find('span')
+            rank = (span.text if span else rank_td.text).strip()
+
+            # Renner: zoek link met 'rider/' in href
+            rider = ""
+            team = ""
+            for a in row.find_all('a', href=True):
+                href = a['href']
+                if 'rider/' in href and not rider:
+                    rider = a.text.strip()
+                elif 'team/' in href and not team:
+                    team = a.text.strip()
+
+            # Sla op als er een renner gevonden is — sla DNS over (niet gestart = geen punten)
+            if rider and rank and rank.upper() != 'DNS':
+                norm_rank = rank.upper() if not rank.isdigit() else rank
+                data.append([koers_naam, norm_rank, rider, team])
+
+        if not data:
+            return False, "Geen renners gevonden in de tabel. Is de uitslag al beschikbaar?"
+
+        # Opslaan naar Google Sheets
         ws_u = sh.worksheet("uitslagen")
-        ws_u.clear()
-        ws_u.update([standard_cols] + final_df.values.tolist())
-        st.cache_data.clear()
+        current_data = ws_u.get_all_records()
+        df_new = pd.DataFrame(data, columns=["koers_naam", "rank", "rider", "team"])
 
-        return True, f"Succes! {len(temp_data)} renners verwerkt (incl. DNF/OTL/DSQ)."
+        if current_data:
+            df_old = pd.DataFrame(current_data)
+            df_old = df_old[df_old['koers_naam'] != koers_naam]
+            final_df = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            final_df = df_new
+
+        ws_u.clear()
+        ws_u.update(values=[final_df.columns.values.tolist()] + final_df.values.tolist(), range_name='A1')
+
+        return True, f"Uitslag voor {koers_naam} succesvol opgeslagen ({len(data)} renners)."
+
     except Exception as e:
         return False, f"Fout: {str(e)}"
 
-# --- STARTLIJST SCRAPER ---
+
 def scrape_startlijst_en_save(koers_naam, url):
+    """
+    Scrapt de startlijst van een PCS startlist-pagina.
+    PCS HTML-structuur (startlist_v4):
+      <ul class="startlist_v4 ...">
+        <li class="ridersCont">
+          <b><a href="team/uae-team-emirates/2026">UAE Team Emirates</a></b>
+          <ul>
+            <li>
+              <div class="bib">11</div>
+              <a href="rider/tadej-pogacar">POGACAR Tadej</a>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    """
     try:
-        # Bouw de startlist URL
-        startlist_url = url.replace('/result', '/startlist').rstrip('/')
-        if not startlist_url.endswith('/startlist'):
-            startlist_url = startlist_url + '/startlist'
-        relatief_pad = startlist_url.replace("https://www.procyclingstats.com/", "").strip("/")
+        # URL normaliseren naar /startlist
+        base = url.rstrip('/')
+        for suffix in ('/result', '/startlist'):
+            if base.endswith(suffix):
+                base = base[:-len(suffix)]
+                break
+        startlist_url = base + '/startlist'
+
         resp = _pcs_get(startlist_url)
-        resp.raise_for_status()
-        startlist = RaceStartlist(relatief_pad, html=resp.text, update_html=False)
-        renners = startlist.startlist()
-        if not renners:
-            return False, "Geen startlijst gevonden via procyclingstats package."
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # 1. Haal huidige startlijsten op om te filteren
+        # Anti-bot check
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
+
+        riders_data = []
+
+        # --- Methode 1: table.basic (PCS tabel-layout) ---
+        table_el = soup.find('table', class_='basic')
+        if table_el:
+            for row in (table_el.find('tbody') or table_el).find_all('tr'):
+                r_link = row.find('a', href=lambda h: h and 'rider/' in h)
+                if not r_link:
+                    continue
+                raw = r_link.text.strip()
+                team_link = row.find('a', href=lambda h: h and 'team/' in h)
+                team_name = team_link.text.strip() if team_link else ""
+                cols = row.find_all('td')
+                bib = ""
+                if cols:
+                    bib_txt = cols[0].text.strip()
+                    bib = bib_txt if bib_txt.isdigit() else ""
+                if raw and len(raw) > 2:
+                    riders_data.append({
+                        "koers_naam": koers_naam,
+                        "startnummer": bib,
+                        "rider": raw,
+                        "team": team_name,
+                    })
+
+        # --- Methode 2: .startlist_v4 met .ridersCont (standaard PCS layout) ---
+        if not riders_data:
+            container = soup.find(class_='startlist_v4')
+            if container:
+                for team_block in container.find_all(class_='ridersCont'):
+                    # Teamnaam: eerste <a> in het team-blok (exact zoals procyclingstats library)
+                    first_a = team_block.find('a')
+                    team_name = first_a.text.strip() if first_a else ""
+
+                    rider_ul = team_block.find('ul')
+                    if not rider_ul:
+                        continue
+
+                    for li in rider_ul.find_all('li', recursive=False):
+                        # Bib: direct child element met class 'bib'
+                        bib = ""
+                        bib_el = li.find(class_='bib')
+                        if bib_el:
+                            bib_txt = bib_el.text.strip().split()[0] if bib_el.text.strip() else ""
+                            bib = bib_txt if bib_txt.isdigit() else ""
+
+                        r_link = li.find('a', href=lambda h: h and 'rider/' in h)
+                        if not r_link:
+                            continue
+                        raw = r_link.text.strip()
+                        if raw and len(raw) > 2:
+                            riders_data.append({
+                                "koers_naam": koers_naam,
+                                "startnummer": bib,
+                                "rider": raw,
+                                "team": team_name,
+                            })
+
+        # --- Methode 3: andere startlist_v versies (v2, v3, v5...) ---
+        if not riders_data:
+            container = soup.find(class_=lambda c: c and isinstance(c, list) and
+                any(cls.startswith('startlist_v') for cls in c))
+            if container:
+                for r_link in container.find_all('a', href=lambda h: h and 'rider/' in h):
+                    raw = r_link.text.strip()
+                    if not raw or len(raw) <= 2:
+                        continue
+                    parent = r_link.find_parent(class_='ridersCont')
+                    team_name = ""
+                    if parent:
+                        first_a = parent.find('a')
+                        team_name = first_a.text.strip() if first_a and first_a != r_link else ""
+                    riders_data.append({
+                        "koers_naam": koers_naam,
+                        "startnummer": "",
+                        "rider": raw,
+                        "team": team_name,
+                    })
+
+        df_new = pd.DataFrame(riders_data).drop_duplicates(subset=['rider'])
+
+        if df_new.empty:
+            # Debug info: welke classes zitten er wel in de HTML?
+            page_title = soup.title.text.strip() if soup.title else "geen titel"
+            all_classes = set()
+            for tag in soup.find_all(True):
+                for cls in (tag.get('class') or []):
+                    if 'startlist' in cls or 'riders' in cls or 'team' in cls.lower():
+                        all_classes.add(cls)
+            debug = f"Paginatitel: '{page_title}'. Gevonden classes: {sorted(all_classes)[:10]}"
+            return False, f"Geen renners gevonden op PCS. {debug}"
+
         standard_cols = ['koers_naam', 'startnummer', 'rider', 'team']
-        try:
-            existing_df = read_sheet("startlijsten")
-            if not existing_df.empty:
-                other_races_df = existing_df[existing_df['koers_naam'] != koers_naam].copy()
-            else:
-                other_races_df = pd.DataFrame(columns=standard_cols)
-        except Exception:
-            other_races_df = pd.DataFrame(columns=standard_cols)
+        existing_sl = read_sheet("startlijsten")
 
-        # 2. Verwerk de startlijst
-        temp_data = []
-        for r in renners:
-            rider_raw = r.get('rider_name', '').strip()
-            rider = ' '.join(w.capitalize() for w in rider_raw.split())
-            team = r.get('team_name', '').strip()
-            startnummer = str(r.get('number', r.get('bib', r.get('rank', '')))).strip()
-            if rider:
-                temp_data.append({
-                    "koers_naam": koers_naam,
-                    "startnummer": startnummer,
-                    "rider": rider,
-                    "team": team
-                })
+        if not existing_sl.empty:
+            other_sl = existing_sl[existing_sl['koers_naam'] != koers_naam].copy()
+            final_sl = pd.concat([other_sl, df_new[standard_cols]], ignore_index=True)
+        else:
+            final_sl = df_new[standard_cols]
 
-        if not temp_data:
-            return False, "Geen renners gevonden in de startlijst."
-
-        new_scraped_df = pd.DataFrame(temp_data)
-        final_df = pd.concat([other_races_df, new_scraped_df], ignore_index=True)
-        final_df = final_df[standard_cols]
+        final_sl = final_sl[standard_cols].astype(str).replace('nan', '')
 
         ws_sl = sh.worksheet("startlijsten")
         ws_sl.clear()
-        ws_sl.update([standard_cols] + final_df.values.tolist())
-        st.cache_data.clear()
+        ws_sl.update([standard_cols] + final_sl.values.tolist(), range_name='A1')
 
-        return True, f"Succes! {len(temp_data)} renners in startlijst verwerkt."
+        st.cache_data.clear()
+        return True, f"Succes! {len(df_new)} renners gevonden voor {koers_naam}."
+
     except Exception as e:
-        return False, f"Fout: {str(e)}"
+        return False, f"Startlijst fout: {str(e)}"
 
 # --- REKEN LOGICA (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
 @st.cache_data(ttl=60)
@@ -972,7 +1108,7 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
     for renner_naam_excel in mijn_renners:
         excel_clean = ultra_clean(renner_naam_excel)
         match_res = process.extractOne(excel_clean, pcs_clean_namen, scorer=fuzz.token_set_ratio)
-
+        
         if match_res and match_res[1] > 85:
             best_match_clean = match_res[0]
             data = u_dict[best_match_clean]
@@ -991,10 +1127,11 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
             except ValueError:
                 rank_int = 999 # Voor DNF/OTL/DSQ
             
-            # Team punten logica: top-3 finishers krijgen GEEN teampunten
+            # Team punten logica: top-3 finishers en DNS krijgen GEEN teampunten
             punten_team = 0
             top3_renner = str(rank) in {"1", "2", "3"}
-            if rt and not top3_renner:
+            is_dns = str(rank).upper() == "DNS"
+            if rt and not top3_renner and not is_dns:
                 if t1 and rt == t1: punten_team += 30
                 if t2 and rt == t2: punten_team += 20
                 if t3 and rt == t3: punten_team += 10
@@ -1090,7 +1227,7 @@ with tab_klas:
                 scores.append({"Deelnemer": speler, "Totaal": int(cumulatief), "Laatste": laatste_score, "Poules": poule_lijst})
 
         df_scores = pd.DataFrame(scores)
-        tab1, tab2, tab3, tab4 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌍 Algemeen", "🥇 Kamer 1", "🥈 Sammeke", "📈 Verloop", "🏅 Eindwinnaars"])
 
         # Bereken vorige stand (op één na laatste koers) voor pijltjes
         def bereken_vorige_stand(history_data, koersen_gehad, spelers=None):
@@ -1187,12 +1324,37 @@ with tab_klas:
                 
                 st.line_chart(df_pivot)
 
+        with tab5:
+            try:
+                sh_fresh = gc.open_by_url(SPREADSHEET_URL)
+                ws_w = None
+                for ws in sh_fresh.worksheets():
+                    if ws.title.strip().lower() == "eindwinnaars":
+                        ws_w = ws
+                        break
+                if ws_w is None:
+                    beschikbaar = [ws.title for ws in sh_fresh.worksheets()]
+                    st.error(f"Tabblad 'Eindwinnaars' niet gevonden. Beschikbaar: {beschikbaar}")
+                else:
+                    rows = ws_w.get_all_values()
+                    if len(rows) < 2:
+                        st.info("Geen historische winnaars gevonden.")
+                    else:
+                        headers = [c.strip() for c in rows[0]]
+                        df_winnaars = pd.DataFrame(rows[1:], columns=headers)
+                        df_winnaars = df_winnaars.replace('', '-')
+                        st.dataframe(df_winnaars, hide_index=True, use_container_width=True)
+            except Exception as e:
+                st.error(f"Fout bij laden van eindwinnaars: {e}")
+
 # =============================================
 # 2. UITSLAG PER KOERS
 # =============================================
 with tab_uitslag:
     st.title("🏁 Koersuitslag & Puntenverdeling")
-    if not u_all.empty:
+    if u_all.empty:
+        st.info("Nog geen uitslagen beschikbaar. Scrape ze eerst via de Beheer pagina.")
+    elif not u_all.empty:
         volgorde = koersen_volgorde
         koers_opties = [k for k in volgorde if k in u_all['koers_naam'].unique()]
         _ul = koers_opties if koers_opties else list(u_all['koers_naam'].unique())
@@ -1434,9 +1596,9 @@ with tab_team:
         
         r_data = []
         with st.spinner('Punten berekenen...'):
+            koersen_met_uitslag = u_all['koers_naam'].unique() if not u_all.empty else []
             for r in mr:
-                # Bereken de totale score
-                score = sum(int(bereken_volledige_score(speler, k, u_all, k_all, [r])[0]) for k in u_all['koers_naam'].unique())
+                score = sum(int(bereken_volledige_score(speler, k, u_all, k_all, [r])[0]) for k in koersen_met_uitslag)
                 r_data.append({"Renner": r, "Totaal Punten": score})
         
         # Maak DataFrame en sorteer
@@ -1700,30 +1862,6 @@ with tab_admin:
 
                 st.write("---")
 
-                # Handmatige uitslag-invoer als fallback (bijv. als IP geblokkeerd)
-                with st.expander("✍️ Uitslag handmatig invoeren (fallback bij blokkade)"):
-                    st.markdown("""
-Plak de uitslag hieronder in het volgende formaat (één renner per regel):
-```
-1,Mathieu Van Der Poel,Alpecin-Deceuninck
-2,Tom Pidcock,Ineos Grenadiers
-3,Wout Van Aert,Visma-Lease a Bike
-DNF,Tadej Pogacar,UAE Team Emirates
-```
-**Kolommen:** `rank,rider,team` — scheidingsteken is een komma.
-""")
-                    handmatig_koers = st.selectbox("Koers:", ["---"] + koers_lijst, key="handmatig_koers")
-                    handmatig_tekst = st.text_area("Plak hier de uitslag:", height=300, key="handmatig_tekst",
-                                                   placeholder="1,Mathieu Van Der Poel,Alpecin-Deceuninck\n2,Tom Pidcock,Ineos Grenadiers\n...")
-                    if st.button("Sla handmatige uitslag op") and handmatig_koers != "---" and handmatig_tekst.strip():
-                        ok, msg = _handmatige_uitslag_opslaan(handmatig_koers, handmatig_tekst)
-                        if ok:
-                            st.success(f"✅ {msg}")
-                        else:
-                            st.error(f"❌ {msg}")
-                
-                st.write("---")
-                
                 # Optie 2: Alles tegelijk
                 if st.button("Start Scraper voor ALLE koersen"):
                     status_placeholder = st.empty()
@@ -1770,17 +1908,7 @@ DNF,Tadej Pogacar,UAE Team Emirates
         else:
             st.error("Geen koersen gevonden.")
 
-        st.divider()
-        
-        st.subheader("🗑️ Data opschonen")
-        if st.button("Verwijder ALLE uitslagen"):
-            ws_u = sh.worksheet("uitslagen")
-            ws_u.clear()
-            headers = ["koers_naam", "rank", "rider", "team"]
-            ws_u.update([headers])
-            st.success("Alle uitslagen zijn gewist uit de database.")
-            st.cache_data.clear()
-            st.rerun()
+
 
     elif poging != "":
         st.error("Onjuist wachtwoord. Toegang geweigerd.")
