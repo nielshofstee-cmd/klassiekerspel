@@ -1640,10 +1640,10 @@ with tab_captains:
 
         # Bouw HTML tabel
         th_style = "padding:6px 10px;background:#1a2e4a;color:white;font-size:12px;text-align:center;white-space:nowrap;"
-        td_speler = "padding:6px 10px;font-size:13px;font-weight:600;white-space:nowrap;border-bottom:1px solid #e2e8f0;"
-        td_base = "padding:6px 10px;font-size:13px;text-align:center;border-bottom:1px solid #e2e8f0;vertical-align:top;"
+        td_speler = "padding:6px 10px;font-size:13px;font-weight:600;white-space:nowrap;background:white;border-bottom:1px solid #e2e8f0;"
+        td_base = "padding:6px 10px;font-size:13px;text-align:center;background:white;border-bottom:1px solid #e2e8f0;"
 
-        html = f'<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="{th_style}text-align:left;">Speler</th>'
+        html = f'<table style="width:100%;border-collapse:collapse;background:white;"><thead><tr><th style="{th_style}text-align:left;">Speler</th>'
         for koers in toon_koersen:
             html += f'<th style="{th_style}">{koers}</th>'
         html += "</tr></thead><tbody>"
@@ -1657,7 +1657,7 @@ with tab_captains:
                 if start_dt <= nu_ov:
                     if heeft_keuze:
                         r = keuze.iloc[0]
-                        cel = f"1. {r['captain_1']}<br>2. {r['captain_2']}<br>3. {r['captain_3']}"
+                        cel = f"{r['captain_1']}, {r['captain_2']}, {r['captain_3']}"
                     else:
                         cel = "—"
                     html += f'<td style="{td_base}">{cel}</td>'
