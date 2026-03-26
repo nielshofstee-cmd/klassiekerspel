@@ -1663,7 +1663,7 @@ with tab_captains:
             return ""
 
         df_ov = pd.DataFrame(matrix_data).set_index("Speler")
-        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * TABLE_ROW_HEIGHT * 3
+        ov_height = TABLE_HEADER_HEIGHT + len(spelers_ov) * 70
         st.dataframe(df_ov.style.applymap(_style_captain), use_container_width=True, height=ov_height)
 
         st.divider()
