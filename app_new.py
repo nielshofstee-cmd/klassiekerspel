@@ -1578,7 +1578,7 @@ with tab_matrix:
         n_matrix_rows = len(df_matrix)
         matrix_height = TABLE_HEADER_HEIGHT + (n_matrix_rows * 38)
         st.dataframe(
-            df_matrix.style.applymap(style_matrix),
+            df_matrix.style.map(style_matrix),
             use_container_width=True,
             height=matrix_height
         )
