@@ -5,22 +5,17 @@ voor een koers die vandaag plaatsvindt.
 Draai dagelijks via Railway cron job (bijv. 07:00 Amsterdam-tijd).
 
 Vereiste environment variables:
-  GMAIL_USER          - Gmail-adres waarmee je verstuurt (bijv. jouw@gmail.com)
-  GMAIL_APP_PASSWORD  - App-wachtwoord (niet je gewone wachtwoord)
-                        Instellen via: Google Account → Beveiliging → App-wachtwoorden
+  RESEND_API_KEY      - API key van resend.com
   GOOGLE_CREDENTIALS  - JSON-string met Google service account credentials
-                        (zelfde als in de Streamlit app)
 """
 
 import os
 import json
-import smtplib
 import sys
 from datetime import datetime
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from zoneinfo import ZoneInfo
 
+import resend
 import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -63,57 +58,43 @@ def get_sheet_client():
 
 def lees_sheet(gc, spreadsheet_url, tab):
     ws = gc.open_by_url(spreadsheet_url).worksheet(tab)
-    data = ws.get_all_records()
-    return pd.DataFrame(data)
+    return pd.DataFrame(ws.get_all_records())
 
 
-def stuur_mail(gmail_user, gmail_password, aan, speler_naam, koers_naam, deadline_str):
-    onderwerp = f"⏰ Reminder: Captains nog niet ingevuld voor {koers_naam}"
+def stuur_mail(aan, speler_naam, koers_naam, deadline_str):
     deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
     deadline_mooi = deadline_dt.strftime("%d-%m-%Y om %H:%M")
-
-    body = f"""Hoi {speler_naam},
-
-Je hebt nog geen captains ingevuld voor {koers_naam}!
-
-De deadline is {deadline_mooi} uur.
-
-Ga snel naar het klassiekerspel en vul je captains in:
-https://klassiekerspel.up.railway.app
-
-Groeten,
-K1xSam Klassiekerspel
-"""
-
-    msg = MIMEMultipart()
-    msg["From"] = gmail_user
-    msg["To"] = aan
-    msg["Subject"] = onderwerp
-    msg.attach(MIMEText(body, "plain"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(gmail_user, gmail_password)
-        server.sendmail(gmail_user, aan, msg.as_string())
+    resend.Emails.send({
+        "from": "K1xSam Klassiekerspel <onboarding@resend.dev>",
+        "to": aan,
+        "subject": f"⏰ Reminder: Captains nog niet ingevuld voor {koers_naam}",
+        "text": (
+            f"Hoi {speler_naam},\n\n"
+            f"Je hebt nog geen captains ingevuld voor {koers_naam}!\n\n"
+            f"De deadline is {deadline_mooi} uur.\n\n"
+            f"Ga snel naar het klassiekerspel en vul je captains in:\n"
+            f"https://klassiekerspel.up.railway.app\n\n"
+            f"Groeten,\nK1xSam Klassiekerspel"
+        ),
+    })
 
 
 def main():
-    gmail_user = os.environ.get("GMAIL_USER")
-    gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
+    resend_api_key = os.environ.get("RESEND_API_KEY")
     spreadsheet_url = os.environ.get(
         "SPREADSHEET_URL",
         "https://docs.google.com/spreadsheets/d/1i8UB1igCk8cSCneTeQEGkxO0XFsuhSP2u4BLZfwHllM/edit"
     )
 
-    if not gmail_user or not gmail_password:
-        print("FOUT: GMAIL_USER of GMAIL_APP_PASSWORD niet ingesteld.")
+    if not resend_api_key:
+        print("FOUT: RESEND_API_KEY niet ingesteld.")
         sys.exit(1)
+
+    resend.api_key = resend_api_key
 
     nu = datetime.now(_AMS)
     vandaag = nu.date()
 
-    # Zoek koersen die vandaag plaatsvinden
     koersen_vandaag = [
         (naam, deadline)
         for naam, deadline in KOERS_DATA.items()
@@ -132,7 +113,6 @@ def main():
         print("FOUT: Kolom 'email' ontbreekt in sheet 'speler_teams'.")
         sys.exit(1)
 
-    # Unieke spelers met e-mailadres
     speler_info = (
         spelers_df[["speler_naam", "email"]]
         .drop_duplicates("speler_naam")
@@ -142,7 +122,6 @@ def main():
     for koers_naam, deadline_str in koersen_vandaag:
         deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
 
-        # Alleen sturen als de deadline nog niet verstreken is
         if nu >= deadline_dt:
             print(f"{koers_naam}: deadline al voorbij, geen reminders verstuurd.")
             continue
@@ -156,7 +135,6 @@ def main():
                 print(f"  {speler_naam}: geen e-mailadres, overgeslagen.")
                 continue
 
-            # Check of captains al ingevuld zijn
             keuze = keuzes_df[
                 (keuzes_df["speler_naam"] == speler_naam) &
                 (keuzes_df["koers_naam"] == koers_naam)
@@ -171,7 +149,7 @@ def main():
                 continue
 
             try:
-                stuur_mail(gmail_user, gmail_password, email, speler_naam, koers_naam, deadline_str)
+                stuur_mail(email, speler_naam, koers_naam, deadline_str)
                 print(f"  {speler_naam}: reminder verstuurd naar {email}.")
                 verzonden += 1
             except Exception as e:
