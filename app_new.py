@@ -1935,7 +1935,9 @@ with tab_admin:
                                 f"Ga snel naar het klassiekerspel en vul je captains in.\n\nGroeten,\nK1xSam Klassiekerspel",
                                 "plain"
                             ))
-                            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+                                server.ehlo()
+                                server.starttls()
                                 server.login(gmail_user, gmail_password)
                                 server.sendmail(gmail_user, email, msg.as_string())
                             verzonden.append(f"{speler_naam} ({email})")
