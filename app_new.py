@@ -1924,13 +1924,13 @@ with tab_admin:
                         try:
                             resend.Emails.send({
                                 "from": "K1xSam Klassiekerspel <onboarding@resend.dev>",
-                                "to": email,
-                                "subject": f"⏰ Reminder: Captains nog niet ingevuld voor {reminder_koers}",
+                                "to": "hetgrotewielerspel@gmail.com",
+                                "subject": f"⏰ Reminder: {speler_naam} heeft nog geen captains voor {reminder_koers}",
                                 "text": (
-                                    f"Hoi {speler_naam},\n\n"
-                                    f"Je hebt nog geen captains ingevuld voor {reminder_koers}!\n\n"
+                                    f"Hoi,\n\n"
+                                    f"{speler_naam} heeft nog geen captains ingevuld voor {reminder_koers}.\n\n"
                                     f"De deadline is {deadline_mooi} uur.\n\n"
-                                    f"Ga snel naar het klassiekerspel en vul je captains in.\n\n"
+                                    f"Stuur deze reminder door naar {speler_naam} ({email}).\n\n"
                                     f"Groeten,\nK1xSam Klassiekerspel"
                                 ),
                             })

@@ -66,14 +66,13 @@ def stuur_mail(aan, speler_naam, koers_naam, deadline_str):
     deadline_mooi = deadline_dt.strftime("%d-%m-%Y om %H:%M")
     resend.Emails.send({
         "from": "K1xSam Klassiekerspel <onboarding@resend.dev>",
-        "to": aan,
-        "subject": f"⏰ Reminder: Captains nog niet ingevuld voor {koers_naam}",
+        "to": "hetgrotewielerspel@gmail.com",
+        "subject": f"⏰ Reminder: {speler_naam} heeft nog geen captains voor {koers_naam}",
         "text": (
-            f"Hoi {speler_naam},\n\n"
-            f"Je hebt nog geen captains ingevuld voor {koers_naam}!\n\n"
+            f"Hoi,\n\n"
+            f"{speler_naam} heeft nog geen captains ingevuld voor {koers_naam}.\n\n"
             f"De deadline is {deadline_mooi} uur.\n\n"
-            f"Ga snel naar het klassiekerspel en vul je captains in:\n"
-            f"https://klassiekerspel.up.railway.app\n\n"
+            f"Stuur deze reminder door naar {speler_naam} ({aan}).\n\n"
             f"Groeten,\nK1xSam Klassiekerspel"
         ),
     })
