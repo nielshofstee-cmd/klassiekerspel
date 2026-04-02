@@ -1633,6 +1633,27 @@ with tab_wissels:
 
     renners_db = read_sheet("renners")   # kolommen: renner, land, team, categorie
 
+    # Auto-detect naamkolom (sheet kan 'naam', 'renner', 'name' etc. hebben)
+    if not renners_db.empty:
+        _naam_kandidaten = ['renner', 'naam', 'name', 'rider', 'renner_naam']
+        _naam_col_r = next((c for c in _naam_kandidaten if c in renners_db.columns),
+                           renners_db.columns[0])
+        if _naam_col_r != 'renner':
+            renners_db = renners_db.rename(columns={_naam_col_r: 'renner'})
+        # Genormaliseerde key voor accent-insensitieve matching
+        import unicodedata as _ud
+        def _norm_naam(s):
+            s = str(s).strip().lower()
+            return ''.join(c for c in _ud.normalize('NFKD', s) if not _ud.combining(c))
+        renners_db['_key'] = renners_db['renner'].map(_norm_naam)
+        # Bouw lookup dict: genorm. naam → rij-metadata
+        _r_lookup = {row['_key']: row for _, row in renners_db.iterrows()}
+        def _meta(naam):
+            row = _r_lookup.get(_norm_naam(naam))
+            if row is not None:
+                return str(row.get('team','?')), str(row.get('land','?')), str(row.get('categorie','?'))
+            return '?', '?', '?'
+
     if s_all.empty or renners_db.empty:
         st.info("Data niet beschikbaar.")
     else:
@@ -1673,15 +1694,17 @@ with tab_wissels:
 
                 # --- Team-regel validatie ---
                 def check_regels(team_namen):
-                    info = renners_db[renners_db['renner'].isin(team_namen)]
+                    rows = [{'team': t, 'land': l, 'categorie': c}
+                            for naam in team_namen for t, l, c in [_meta(naam)]]
+                    info = pd.DataFrame(rows)
                     fouten = []
                     if len(team_namen) > 25:
                         fouten.append(f"Max 25 renners — huidig: {len(team_namen)}")
                     for ploeg, cnt in info['team'].value_counts().items():
-                        if cnt > 2:
+                        if cnt > 2 and ploeg != '?':
                             fouten.append(f"Max 2 per ploeg — {ploeg}: {cnt}")
                     for land, cnt in info['land'].value_counts().items():
-                        if cnt > 5:
+                        if cnt > 5 and land != '?':
                             fouten.append(f"Max 5 per land — {land}: {cnt}")
                     cat_counts = info['categorie'].value_counts()
                     if cat_counts.get(CAT_TOPPER, 0) > 5:
@@ -1697,11 +1720,10 @@ with tab_wissels:
                 col_budget, col_used = st.columns(2)
                 col_budget.metric("Wissels over", f"{wissels_over} / {MAX_WISSELS}")
 
-                team_info_df = renners_db[renners_db['renner'].isin(actief_team)][['renner','team','land','categorie']].copy()
-                missing = [r for r in actief_team if r not in renners_db['renner'].values]
-                if missing:
-                    extra = pd.DataFrame([{'renner': r, 'team': '?', 'land': '?', 'categorie': '?'} for r in missing])
-                    team_info_df = pd.concat([team_info_df, extra], ignore_index=True)
+                team_info_df = pd.DataFrame([
+                    {'renner': naam, 'team': t, 'land': l, 'categorie': c}
+                    for naam in actief_team for t, l, c in [_meta(naam)]
+                ])
                 team_info_df = team_info_df.sort_values('categorie').reset_index(drop=True)
                 team_info_df.index += 1
                 st.dataframe(
@@ -1731,9 +1753,10 @@ with tab_wissels:
                         min_value=1, max_value=wissels_over, value=1, step=1, key="n_wissels"
                     )
 
+                    actief_keys = {_norm_naam(r) for r in actief_team}
                     beschikbaar = sorted([
                         r for r in renners_db['renner'].tolist()
-                        if r not in actief_team
+                        if _norm_naam(r) not in actief_keys
                     ])
 
                     uit_keuzes = []
@@ -1756,7 +1779,10 @@ with tab_wissels:
                     fouten_nieuw = check_regels(nieuw_team)
 
                     st.markdown("**Preview nieuw team na wissel:**")
-                    nieuw_info = renners_db[renners_db['renner'].isin(nieuw_team)][['renner','team','land','categorie']]
+                    nieuw_info = pd.DataFrame([
+                        {'renner': naam, 'team': t, 'land': l, 'categorie': c}
+                        for naam in nieuw_team for t, l, c in [_meta(naam)]
+                    ])
                     cat_c  = nieuw_info['categorie'].value_counts()
                     land_c = nieuw_info['land'].value_counts()
                     m1, m2, m3, m4, m5 = st.columns(5)
