@@ -1879,16 +1879,13 @@ with tab_admin:
         reminder_koers = st.selectbox("Koers waarvoor je reminders wil sturen:", reminder_koersen, index=get_standaard_koers_index(reminder_koersen), key="reminder_koers")
 
         if st.button("Stuur reminders naar spelers zonder captains"):
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
+            import resend
 
-            gmail_user = os.environ.get("GMAIL_USER")
-            gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
-
-            if not gmail_user or not gmail_password:
-                st.error("GMAIL_USER of GMAIL_APP_PASSWORD niet ingesteld als environment variable.")
+            resend_api_key = os.environ.get("RESEND_API_KEY")
+            if not resend_api_key:
+                st.error("RESEND_API_KEY niet ingesteld als environment variable.")
             else:
+                resend.api_key = resend_api_key
                 spelers_mail = read_sheet("speler_teams")
                 keuzes_mail = read_sheet("keuzes")
 
@@ -1925,21 +1922,18 @@ with tab_admin:
                             continue
 
                         try:
-                            msg = MIMEMultipart()
-                            msg["From"] = gmail_user
-                            msg["To"] = email
-                            msg["Subject"] = f"⏰ Reminder: Captains nog niet ingevuld voor {reminder_koers}"
-                            msg.attach(MIMEText(
-                                f"Hoi {speler_naam},\n\nJe hebt nog geen captains ingevuld voor {reminder_koers}!\n\n"
-                                f"De deadline is {deadline_mooi} uur.\n\n"
-                                f"Ga snel naar het klassiekerspel en vul je captains in.\n\nGroeten,\nK1xSam Klassiekerspel",
-                                "plain"
-                            ))
-                            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-                                server.ehlo()
-                                server.starttls()
-                                server.login(gmail_user, gmail_password)
-                                server.sendmail(gmail_user, email, msg.as_string())
+                            resend.Emails.send({
+                                "from": "K1xSam Klassiekerspel <onboarding@resend.dev>",
+                                "to": email,
+                                "subject": f"⏰ Reminder: Captains nog niet ingevuld voor {reminder_koers}",
+                                "text": (
+                                    f"Hoi {speler_naam},\n\n"
+                                    f"Je hebt nog geen captains ingevuld voor {reminder_koers}!\n\n"
+                                    f"De deadline is {deadline_mooi} uur.\n\n"
+                                    f"Ga snel naar het klassiekerspel en vul je captains in.\n\n"
+                                    f"Groeten,\nK1xSam Klassiekerspel"
+                                ),
+                            })
                             verzonden.append(f"{speler_naam} ({email})")
                         except Exception as e:
                             overgeslagen.append(f"{speler_naam} (fout: {e})")
