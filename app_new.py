@@ -1627,9 +1627,9 @@ with tab_wissels:
 
     WISSEL_START    = pd.to_datetime("2026-04-13")   # dag na Paris-Roubaix
     MAX_WISSELS     = 5
-    CAT_TOPPER      = "Max5 topper"
+    CAT_TOPPER      = "max5 topper"
     CAT_SUBTOPPER   = "max5 subtopper"
-    CAT_RENNER      = "Min3 renner"
+    CAT_RENNER      = "min3 renner"
 
     renners_db = read_sheet("renners")   # kolommen: renner, land, team, categorie
 
@@ -1651,7 +1651,7 @@ with tab_wissels:
         def _meta(naam):
             row = _r_lookup.get(_norm_naam(naam))
             if row is not None:
-                return str(row.get('team','?')), str(row.get('land','?')), str(row.get('categorie','?'))
+                return str(row.get('team','?')), str(row.get('land','?')), str(row.get('categorie','?')).lower()
             return '?', '?', '?'
 
     if s_all.empty or renners_db.empty:
@@ -1785,12 +1785,14 @@ with tab_wissels:
                     ])
                     cat_c  = nieuw_info['categorie'].value_counts()
                     land_c = nieuw_info['land'].value_counts()
-                    m1, m2, m3, m4, m5 = st.columns(5)
+                    ploeg_c = nieuw_info[nieuw_info['team'] != '?']['team'].value_counts()
+                    m1, m2, m3, m4, m5, m6 = st.columns(6)
                     m1.metric("Totaal", len(nieuw_team))
-                    m2.metric(CAT_TOPPER, f"{cat_c.get(CAT_TOPPER,0)}/5")
-                    m3.metric(CAT_SUBTOPPER, f"{cat_c.get(CAT_SUBTOPPER,0)}/5")
-                    m4.metric(CAT_RENNER, f"{cat_c.get(CAT_RENNER,0)} (min 3)")
-                    m5.metric("Max land", f"{land_c.max() if not land_c.empty else 0}/5")
+                    m2.metric("Toppers", f"{cat_c.get(CAT_TOPPER,0)}/5")
+                    m3.metric("Subtoppers", f"{cat_c.get(CAT_SUBTOPPER,0)}/5")
+                    m4.metric("Renners", f"{cat_c.get(CAT_RENNER,0)} (min 3)")
+                    m5.metric("Max land", f"{land_c[land_c.index != '?'].max() if not land_c.empty else 0}/5")
+                    m6.metric("Max ploeg", f"{ploeg_c.max() if not ploeg_c.empty else 0}/2")
 
                     if fouten_nieuw:
                         for f in fouten_nieuw:
