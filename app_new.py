@@ -2016,14 +2016,22 @@ with tab_admin:
             st.write("---")
 
             if st.button("Scrape startlijsten voor ALLE koersen"):
-                status_placeholder2 = st.empty()
-                for index, r in df_k.iterrows():
-                    k_naam = r['koers_naam']
-                    k_url = r['url']
-                    status_placeholder2.info(f"Bezig met ({index+1}/{len(df_k)}): {k_naam}...")
-                    ok, msg = scrape_startlijst_en_save(k_naam, k_url)
-                    st.write(f"{'✅' if ok else '❌'} {k_naam}: {msg}")
-                status_placeholder2.success("Klaar!")
+                nu_scrape = datetime.now(_AMS)
+                toekomstige_koersen = df_k[df_k['koers_naam'].apply(
+                    lambda k: k in KOERS_DATA and
+                    datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS) > nu_scrape
+                )]
+                if toekomstige_koersen.empty:
+                    st.info("Geen aankomende koersen gevonden.")
+                else:
+                    status_placeholder2 = st.empty()
+                    for index, r in toekomstige_koersen.iterrows():
+                        k_naam = r['koers_naam']
+                        k_url = r['url']
+                        status_placeholder2.info(f"Bezig met {k_naam}...")
+                        ok, msg = scrape_startlijst_en_save(k_naam, k_url)
+                        st.write(f"{'✅' if ok else '❌'} {k_naam}: {msg}")
+                    status_placeholder2.success("Klaar!")
                 st.cache_data.clear()
         else:
             st.error("Geen koersen gevonden.")
