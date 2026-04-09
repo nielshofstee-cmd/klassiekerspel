@@ -696,7 +696,7 @@ _KOERS_DATA_FALLBACK = {
     "Ronde Van Vlaanderen": "2026-04-05 10:00",
     "Scheldeprijs": "2026-04-08 12:00",
     "Paris Roubaix": "2026-04-12 11:00",
-    "Brabantse Pijl": "2026-04-15 12:00",
+    "Brabantse Pijl": "2026-04-17 12:00",
     "Amstel Gold Race": "2026-04-19 10:00",
     "La Fleche Wallone": "2026-04-22 11:00",
     "Liege Bastogne Liege": "2026-04-26 10:00"
@@ -1625,7 +1625,7 @@ with tab_team:
 with tab_wissels:
     st.title("🔄 Wissels")
 
-    WISSEL_START    = pd.to_datetime("2026-04-15")   # deadline Brabantse Pijl
+    WISSEL_START    = pd.to_datetime("2026-04-17")   # deadline Brabantse Pijl
     MAX_WISSELS     = 5
     CAT_TOPPER      = "max5 topper"
     CAT_SUBTOPPER   = "max5 subtopper"
