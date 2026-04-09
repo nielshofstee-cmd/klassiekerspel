@@ -1177,11 +1177,7 @@ koersen_volgorde = get_koersen_volgorde()
 # =============================================
 # LOGIN (met persistente cookie)
 # =============================================
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager(key="km")
-
-cookie_manager = get_cookie_manager()
+cookie_manager = stx.CookieManager(key="km")
 _COOKIE_NAME = "klassiekerspel_speler"
 
 # Herstel sessie vanuit cookie (bij page refresh)
