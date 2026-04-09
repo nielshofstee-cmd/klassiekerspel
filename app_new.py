@@ -1625,7 +1625,7 @@ with tab_team:
 with tab_wissels:
     st.title("🔄 Wissels")
 
-    WISSEL_START    = pd.to_datetime("2026-04-17")   # deadline Brabantse Pijl
+    WISSEL_START    = pd.to_datetime("2026-04-16")   # dag voor deadline Brabantse Pijl
     MAX_WISSELS     = 5
     CAT_TOPPER      = "max5 topper"
     CAT_SUBTOPPER   = "max5 subtopper"
