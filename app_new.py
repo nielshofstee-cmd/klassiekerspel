@@ -1545,7 +1545,9 @@ with tab_startlijst:
 with tab_matrix:
     st.title("📊 Punten Matrix")
     if not s_all.empty and not u_all.empty:
-        speler = st.selectbox("Selecteer Deelnemer", sorted(s_all['speler_naam'].unique()))
+        spelers_m = sorted(s_all['speler_naam'].unique())
+        default_m = spelers_m.index(ingelogd_speler) if ingelogd_speler in spelers_m else 0
+        speler = st.selectbox("Selecteer Deelnemer", spelers_m, index=default_m)
         
         volgorde = koersen_volgorde
         beschikbare_koersen = u_all['koers_naam'].unique()
@@ -1627,7 +1629,9 @@ with tab_matrix:
 with tab_team:
     st.title("🚌 Mijn Team Overzicht")
     if not s_all.empty:
-        speler = ingelogd_speler
+        spelers = sorted(s_all['speler_naam'].unique())
+        default_idx = spelers.index(ingelogd_speler) if ingelogd_speler in spelers else 0
+        speler = st.selectbox("Naam:", spelers, index=default_idx)
         
         # Haal de renners op
         mr = s_all[s_all['speler_naam'] == speler]['renner_naam'].tolist()
