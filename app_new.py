@@ -736,6 +736,20 @@ def get_standaard_koers_index(koers_lijst):
                 pass
     return best_i
 
+def get_volgende_koers_index(koers_lijst):
+    """Geeft de index van de eerstvolgende koers (deadline in de toekomst).
+    Als alle koersen voorbij zijn, wordt de laatste koers teruggegeven."""
+    nu = datetime.now(_AMS)
+    for i, k in enumerate(koers_lijst):
+        if k in KOERS_DATA:
+            try:
+                dt = datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+                if dt > nu:
+                    return i
+            except ValueError:
+                pass
+    return max(0, len(koers_lijst) - 1)  # alle voorbij: laatste koers
+
 
 # --- HANDMATIGE UITSLAG INVOER (fallback als scrapen mislukt) ---
 def _handmatige_uitslag_opslaan(koers_naam, tekst):
@@ -1529,7 +1543,7 @@ with tab_startlijst:
         if not koersen_sl_gesorteerd:
             st.info("Geen koersen gevonden in de startlijsten database.")
         else:
-            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, index=get_standaard_koers_index(koersen_sl_gesorteerd), key="sl_koers_view")
+            gekozen_koers = st.selectbox("Selecteer een koers:", koersen_sl_gesorteerd, index=get_volgende_koers_index(koersen_sl_gesorteerd), key="sl_koers_view")
 
             koers_df = sl_all[sl_all['koers_naam'] == gekozen_koers].copy()
 
@@ -1964,7 +1978,7 @@ with tab_captains:
         # --- SECTIE 1: CAPTAINS INSTELLEN ---
         st.subheader("📝 Captains Instellen")
         _captain_koersen = list(KOERS_DATA.keys())
-        koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_standaard_koers_index(_captain_koersen))
+        koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_volgende_koers_index(_captain_koersen))
 
         # Check of koers al gestart is
         deadline_str = KOERS_DATA[koers_keuze]
@@ -2066,7 +2080,7 @@ with tab_captains:
 
         with tab_alle:
             _alle_koersen = list(KOERS_DATA.keys())
-            bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_standaard_koers_index(_alle_koersen), key="view_others")
+            bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_volgende_koers_index(_alle_koersen), key="view_others")
             nu = datetime.now(_AMS)
             start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
 
