@@ -1180,10 +1180,17 @@ koersen_volgorde = get_koersen_volgorde()
 cookie_manager = stx.CookieManager(key="km")
 _COOKIE_NAME = "klassiekerspel_speler"
 
-# Herstel sessie vanuit cookie (bij page refresh)
+# Zorg dat session state bestaat
 if 'ingelogd_speler' not in st.session_state:
-    opgeslagen = cookie_manager.get(_COOKIE_NAME)
-    st.session_state['ingelogd_speler'] = opgeslagen if opgeslagen else None
+    st.session_state['ingelogd_speler'] = None
+
+# Herstel sessie vanuit cookie — CookieManager is asynchroon, dus check elke
+# render opnieuw zolang we nog niet ingelogd zijn (waarde komt na 1e render)
+if st.session_state['ingelogd_speler'] is None:
+    opgeslagen = cookie_manager.get(cookie=_COOKIE_NAME)
+    if opgeslagen:
+        st.session_state['ingelogd_speler'] = opgeslagen
+        st.rerun()
 
 if st.session_state['ingelogd_speler'] is None:
     st.subheader("🔐 Inloggen")
@@ -1212,10 +1219,16 @@ if st.session_state['ingelogd_speler'] is None:
 
 ingelogd_speler = st.session_state['ingelogd_speler']
 
-# Logout knop in sidebar
+# Haal e-mailadres op van ingelogde speler
+_speler_row = s_all[s_all['speler_naam'] == ingelogd_speler]
+ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
+
+# Sidebar: ingelogd als + uitlogknop
 with st.sidebar:
     st.markdown(f"👤 **{ingelogd_speler}**")
-    if st.button("Uitloggen"):
+    if ingelogd_email:
+        st.caption(ingelogd_email)
+    if st.button("🚪 Uitloggen"):
         cookie_manager.delete(_COOKIE_NAME)
         st.session_state['ingelogd_speler'] = None
         st.rerun()
