@@ -1173,10 +1173,11 @@ _COOKIE_NAME = "klassiekerspel_speler"
 # Zorg dat session state bestaat
 if 'ingelogd_speler' not in st.session_state:
     st.session_state['ingelogd_speler'] = None
+    st.session_state['uitgelogd'] = False
 
-# Herstel sessie vanuit cookie — CookieManager is asynchroon, dus check elke
-# render opnieuw zolang we nog niet ingelogd zijn (waarde komt na 1e render)
-if st.session_state['ingelogd_speler'] is None:
+# Herstel sessie vanuit cookie — alleen als niet expliciet uitgelogd
+# CookieManager is asynchroon: waarde komt pas na 1e render beschikbaar
+if st.session_state['ingelogd_speler'] is None and not st.session_state.get('uitgelogd', False):
     opgeslagen = cookie_manager.get(cookie=_COOKIE_NAME)
     if opgeslagen:
         st.session_state['ingelogd_speler'] = opgeslagen
@@ -1198,6 +1199,7 @@ if st.session_state['ingelogd_speler'] is None:
                     correct_pin_in = str(match['pincode'].iloc[0])
                     if pin_in == correct_pin_in:
                         st.session_state['ingelogd_speler'] = speler_naam_in
+                        st.session_state['uitgelogd'] = False
                         cookie_manager.set(_COOKIE_NAME, speler_naam_in,
                                            expires_at=datetime.now() + timedelta(days=365))
                         st.rerun()
@@ -1216,6 +1218,7 @@ if st.query_params.get("logout") == "1":
     except (KeyError, Exception):
         pass  # cookie was al verwijderd of nog niet geladen
     st.session_state['ingelogd_speler'] = None
+    st.session_state['uitgelogd'] = True
     st.query_params.clear()
     st.rerun()
 
