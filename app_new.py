@@ -11,8 +11,9 @@ import random
 from thefuzz import fuzz, process
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import extra_streamlit_components as stx
 
 _AMS = ZoneInfo("Europe/Amsterdam")
 
@@ -1174,10 +1175,19 @@ if k_all is None or k_all.empty:
 koersen_volgorde = get_koersen_volgorde()
 
 # =============================================
-# LOGIN
+# LOGIN (met persistente cookie)
 # =============================================
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager(key="km")
+
+cookie_manager = get_cookie_manager()
+_COOKIE_NAME = "klassiekerspel_speler"
+
+# Herstel sessie vanuit cookie (bij page refresh)
 if 'ingelogd_speler' not in st.session_state:
-    st.session_state['ingelogd_speler'] = None
+    opgeslagen = cookie_manager.get(_COOKIE_NAME)
+    st.session_state['ingelogd_speler'] = opgeslagen if opgeslagen else None
 
 if st.session_state['ingelogd_speler'] is None:
     st.subheader("🔐 Inloggen")
@@ -1195,6 +1205,8 @@ if st.session_state['ingelogd_speler'] is None:
                     correct_pin_in = str(match['pincode'].iloc[0])
                     if pin_in == correct_pin_in:
                         st.session_state['ingelogd_speler'] = speler_naam_in
+                        cookie_manager.set(_COOKIE_NAME, speler_naam_in,
+                                           expires_at=datetime.now() + timedelta(days=365))
                         st.rerun()
                     else:
                         st.error("Onjuiste pincode.")
@@ -1208,6 +1220,7 @@ ingelogd_speler = st.session_state['ingelogd_speler']
 with st.sidebar:
     st.markdown(f"👤 **{ingelogd_speler}**")
     if st.button("Uitloggen"):
+        cookie_manager.delete(_COOKIE_NAME)
         st.session_state['ingelogd_speler'] = None
         st.rerun()
 
