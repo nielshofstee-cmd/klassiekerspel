@@ -1627,7 +1627,9 @@ with tab_matrix:
 with tab_team:
     st.title("🚌 Mijn Team Overzicht")
     if not s_all.empty:
-        speler = ingelogd_speler
+        spelers = sorted(s_all['speler_naam'].unique())
+        default_idx = spelers.index(ingelogd_speler) if ingelogd_speler in spelers else 0
+        speler = st.selectbox("Naam:", spelers, index=default_idx)
         
         # Haal de renners op
         mr = s_all[s_all['speler_naam'] == speler]['renner_naam'].tolist()
