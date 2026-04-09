@@ -1164,8 +1164,6 @@ st.markdown("""
 
 PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
 
-tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_wissels, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
-
 # Data inladen via Google Sheets
 u_all = read_sheet("uitslagen")
 s_all = read_sheet("speler_teams")
@@ -1174,6 +1172,46 @@ if k_all is None or k_all.empty:
     k_all = pd.DataFrame(columns=["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"])
 
 koersen_volgorde = get_koersen_volgorde()
+
+# =============================================
+# LOGIN
+# =============================================
+if 'ingelogd_speler' not in st.session_state:
+    st.session_state['ingelogd_speler'] = None
+
+if st.session_state['ingelogd_speler'] is None:
+    st.subheader("🔐 Inloggen")
+    if not s_all.empty and 'email' in s_all.columns:
+        col_login, _ = st.columns([1, 2])
+        with col_login:
+            email_in = st.text_input("E-mailadres:")
+            pin_in   = st.text_input("Pincode:", type="password")
+            if st.button("Inloggen", type="primary"):
+                match = s_all[s_all['email'].str.strip().str.lower() == email_in.strip().lower()]
+                if match.empty:
+                    st.error("E-mailadres niet gevonden.")
+                else:
+                    speler_naam_in = match['speler_naam'].iloc[0]
+                    correct_pin_in = str(match['pincode'].iloc[0])
+                    if pin_in == correct_pin_in:
+                        st.session_state['ingelogd_speler'] = speler_naam_in
+                        st.rerun()
+                    else:
+                        st.error("Onjuiste pincode.")
+    else:
+        st.error("Kan spelerdata niet laden.")
+    st.stop()
+
+ingelogd_speler = st.session_state['ingelogd_speler']
+
+# Logout knop in sidebar
+with st.sidebar:
+    st.markdown(f"👤 **{ingelogd_speler}**")
+    if st.button("Uitloggen"):
+        st.session_state['ingelogd_speler'] = None
+        st.rerun()
+
+tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_wissels, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
 # =============================================
 # 1. KLASSEMENT
@@ -1589,7 +1627,7 @@ with tab_matrix:
 with tab_team:
     st.title("🚌 Mijn Team Overzicht")
     if not s_all.empty:
-        speler = st.selectbox("Naam:", sorted(s_all['speler_naam'].unique()))
+        speler = ingelogd_speler
         
         # Haal de renners op
         mr = s_all[s_all['speler_naam'] == speler]['renner_naam'].tolist()
@@ -1662,182 +1700,175 @@ with tab_wissels:
         # Wissels zijn nu al zichtbaar maar gaan pas in op WISSEL_START
         wissel_datum = max(today_w, WISSEL_START).strftime("%Y-%m-%d")
 
-        naam_w = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="wissel_speler")
-        pin_w  = st.text_input("Pincode:", type="password", key="wissel_pin")
+        naam_w = ingelogd_speler
+        speler_rows_w = s_all[s_all['speler_naam'] == naam_w].copy()
 
-        if pin_w:
-            correct_w = str(s_all[s_all['speler_naam'] == naam_w]['pincode'].iloc[0])
-            if pin_w != correct_w:
-                st.error("Onjuiste pincode.")
+        # --- Actief team vandaag ---
+        mask_actief = (
+            (pd.to_datetime(speler_rows_w['vanaf_datum'], errors='coerce') <= today_w) &
+            (
+                speler_rows_w['tot_datum'].isna() |
+                (speler_rows_w['tot_datum'] == "") |
+                (pd.to_datetime(speler_rows_w['tot_datum'], errors='coerce') > today_w)
+            )
+        )
+        actief_team = speler_rows_w[mask_actief]['renner_naam'].tolist()
+
+        # --- Wissels gebruikt ---
+        mask_wissel_out = (
+            speler_rows_w['tot_datum'].notna() &
+            (speler_rows_w['tot_datum'] != "") &
+            (pd.to_datetime(speler_rows_w['tot_datum'], errors='coerce') >= WISSEL_START)
+        )
+        wissels_gebruikt = int(mask_wissel_out.sum())
+        wissels_over     = MAX_WISSELS - wissels_gebruikt
+
+        # --- Team-regel validatie ---
+        def check_regels(team_namen):
+            rows = [{'team': t, 'land': l, 'categorie': c}
+                    for naam in team_namen for t, l, c in [_meta(naam)]]
+            info = pd.DataFrame(rows)
+            fouten = []
+            if len(team_namen) > 25:
+                fouten.append(f"Max 25 renners — huidig: {len(team_namen)}")
+            for ploeg, cnt in info['team'].value_counts().items():
+                if cnt > 2 and ploeg != '?':
+                    fouten.append(f"Max 2 per ploeg — {ploeg}: {cnt}")
+            for land, cnt in info['land'].value_counts().items():
+                if cnt > 5 and land != '?':
+                    fouten.append(f"Max 5 per land — {land}: {cnt}")
+            cat_counts = info['categorie'].value_counts()
+            if cat_counts.get(CAT_TOPPER, 0) > 5:
+                fouten.append(f"Max 5 {CAT_TOPPER} — huidig: {cat_counts.get(CAT_TOPPER, 0)}")
+            if cat_counts.get(CAT_SUBTOPPER, 0) > 5:
+                fouten.append(f"Max 5 {CAT_SUBTOPPER} — huidig: {cat_counts.get(CAT_SUBTOPPER, 0)}")
+            if cat_counts.get(CAT_RENNER, 0) < 3:
+                fouten.append(f"Min 3 {CAT_RENNER} — huidig: {cat_counts.get(CAT_RENNER, 0)}")
+            return fouten
+
+        # --- Huidig team weergeven ---
+        st.subheader(f"Huidig team — {len(actief_team)} renners")
+        col_budget, col_used = st.columns(2)
+        col_budget.metric("Wissels over", f"{wissels_over} / {MAX_WISSELS}")
+
+        team_info_df = pd.DataFrame([
+            {'renner': naam, 'team': t, 'land': l, 'categorie': c}
+            for naam in actief_team for t, l, c in [_meta(naam)]
+        ])
+        team_info_df = team_info_df.sort_values('categorie').reset_index(drop=True)
+        team_info_df.index += 1
+        st.dataframe(
+            team_info_df,
+            use_container_width=True,
+            height=TABLE_HEADER_HEIGHT + len(team_info_df) * TABLE_ROW_HEIGHT,
+            hide_index=False,
+        )
+
+        # Huidige regelcheck tonen
+        huidige_fouten = check_regels(actief_team)
+        if huidige_fouten:
+            with st.expander("⚠️ Huidige team-regelovertredingen"):
+                for f in huidige_fouten:
+                    st.warning(f)
+
+        st.divider()
+
+        if wissels_over <= 0:
+            st.warning("Je hebt alle 5 wissels al gebruikt.")
+        else:
+            st.subheader("Wissel doorvoeren")
+            if today_w < WISSEL_START:
+                st.info(f"ℹ️ Je wissels gaan in op {WISSEL_START.strftime('%d-%m-%Y')} (deadline Brabantse Pijl). Je kunt ze alvast klaarzetten.")
+            n_w = st.number_input(
+                f"Hoeveel wissels wil je nu doorvoeren? (max {wissels_over})",
+                min_value=1, max_value=wissels_over, value=1, step=1, key="n_wissels"
+            )
+
+            actief_keys = {_norm_naam(r) for r in actief_team}
+            beschikbaar = sorted([
+                r for r in renners_db['renner'].tolist()
+                if _norm_naam(r) not in actief_keys
+            ])
+
+            uit_keuzes = []
+            in_keuzes  = []
+
+            for i in range(int(n_w)):
+                st.markdown(f"**Wissel {i+1}**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    opties_uit = [r for r in actief_team if r not in uit_keuzes]
+                    uit = st.selectbox(f"Eruit:", opties_uit, key=f"uit_{i}")
+                    uit_keuzes.append(uit)
+                with c2:
+                    opties_in = [r for r in beschikbaar if r not in in_keuzes]
+                    inn = st.selectbox(f"Erin:", opties_in, key=f"in_{i}")
+                    in_keuzes.append(inn)
+
+            # Preview nieuw team
+            nieuw_team = [r for r in actief_team if r not in uit_keuzes] + in_keuzes
+            fouten_nieuw = check_regels(nieuw_team)
+
+            st.markdown("**Preview nieuw team na wissel:**")
+            nieuw_info = pd.DataFrame([
+                {'renner': naam, 'team': t, 'land': l, 'categorie': c}
+                for naam in nieuw_team for t, l, c in [_meta(naam)]
+            ])
+            cat_c  = nieuw_info['categorie'].value_counts()
+            land_c = nieuw_info['land'].value_counts()
+            ploeg_c = nieuw_info[nieuw_info['team'] != '?']['team'].value_counts()
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            m1.metric("Totaal", len(nieuw_team))
+            m2.metric("Toppers", f"{cat_c.get(CAT_TOPPER,0)}/5")
+            m3.metric("Subtoppers", f"{cat_c.get(CAT_SUBTOPPER,0)}/5")
+            m4.metric("Renners", f"{cat_c.get(CAT_RENNER,0)} (min 3)")
+            m5.metric("Max land", f"{land_c[land_c.index != '?'].max() if not land_c.empty else 0}/5")
+            m6.metric("Max ploeg", f"{ploeg_c.max() if not ploeg_c.empty else 0}/2")
+
+            if fouten_nieuw:
+                for f in fouten_nieuw:
+                    st.error(f"❌ {f}")
             else:
-                speler_rows_w = s_all[s_all['speler_naam'] == naam_w].copy()
+                st.success("✅ Nieuw team voldoet aan alle regels")
 
-                # --- Actief team vandaag ---
-                mask_actief = (
-                    (pd.to_datetime(speler_rows_w['vanaf_datum'], errors='coerce') <= today_w) &
-                    (
-                        speler_rows_w['tot_datum'].isna() |
-                        (speler_rows_w['tot_datum'] == "") |
-                        (pd.to_datetime(speler_rows_w['tot_datum'], errors='coerce') > today_w)
-                    )
-                )
-                actief_team = speler_rows_w[mask_actief]['renner_naam'].tolist()
+            if st.button("✅ Bevestig wissels opslaan", disabled=bool(fouten_nieuw)):
+                s_updated = s_all.copy()
 
-                # --- Wissels gebruikt ---
-                mask_wissel_out = (
-                    speler_rows_w['tot_datum'].notna() &
-                    (speler_rows_w['tot_datum'] != "") &
-                    (pd.to_datetime(speler_rows_w['tot_datum'], errors='coerce') >= WISSEL_START)
-                )
-                wissels_gebruikt = int(mask_wissel_out.sum())
-                wissels_over     = MAX_WISSELS - wissels_gebruikt
+                # Zet tot_datum voor uitgaande renners
+                for r_uit in uit_keuzes:
+                    idx = s_updated[
+                        (s_updated['speler_naam'] == naam_w) &
+                        (s_updated['renner_naam'] == r_uit) &
+                        (s_updated['tot_datum'].isna() | (s_updated['tot_datum'] == ""))
+                    ].index
+                    s_updated.loc[idx, 'tot_datum'] = wissel_datum
 
-                # --- Team-regel validatie ---
-                def check_regels(team_namen):
-                    rows = [{'team': t, 'land': l, 'categorie': c}
-                            for naam in team_namen for t, l, c in [_meta(naam)]]
-                    info = pd.DataFrame(rows)
-                    fouten = []
-                    if len(team_namen) > 25:
-                        fouten.append(f"Max 25 renners — huidig: {len(team_namen)}")
-                    for ploeg, cnt in info['team'].value_counts().items():
-                        if cnt > 2 and ploeg != '?':
-                            fouten.append(f"Max 2 per ploeg — {ploeg}: {cnt}")
-                    for land, cnt in info['land'].value_counts().items():
-                        if cnt > 5 and land != '?':
-                            fouten.append(f"Max 5 per land — {land}: {cnt}")
-                    cat_counts = info['categorie'].value_counts()
-                    if cat_counts.get(CAT_TOPPER, 0) > 5:
-                        fouten.append(f"Max 5 {CAT_TOPPER} — huidig: {cat_counts.get(CAT_TOPPER, 0)}")
-                    if cat_counts.get(CAT_SUBTOPPER, 0) > 5:
-                        fouten.append(f"Max 5 {CAT_SUBTOPPER} — huidig: {cat_counts.get(CAT_SUBTOPPER, 0)}")
-                    if cat_counts.get(CAT_RENNER, 0) < 3:
-                        fouten.append(f"Min 3 {CAT_RENNER} — huidig: {cat_counts.get(CAT_RENNER, 0)}")
-                    return fouten
+                # Voeg inkomende renners toe
+                pin_val      = speler_rows_w['pincode'].iloc[0]
+                subpoule_val = speler_rows_w['subpoule'].iloc[0] if 'subpoule' in speler_rows_w.columns else ""
+                email_val    = speler_rows_w['email'].iloc[0] if 'email' in speler_rows_w.columns else ""
 
-                # --- Huidig team weergeven ---
-                st.subheader(f"Huidig team — {len(actief_team)} renners")
-                col_budget, col_used = st.columns(2)
-                col_budget.metric("Wissels over", f"{wissels_over} / {MAX_WISSELS}")
+                for r_in in in_keuzes:
+                    new_row = pd.DataFrame([{
+                        'speler_naam': naam_w,
+                        'renner_naam': r_in,
+                        'pincode':     pin_val,
+                        'subpoule':    subpoule_val,
+                        'email':       email_val,
+                        'vanaf_datum': wissel_datum,
+                        'tot_datum':   ""
+                    }])
+                    s_updated = pd.concat([s_updated, new_row], ignore_index=True)
 
-                team_info_df = pd.DataFrame([
-                    {'renner': naam, 'team': t, 'land': l, 'categorie': c}
-                    for naam in actief_team for t, l, c in [_meta(naam)]
-                ])
-                team_info_df = team_info_df.sort_values('categorie').reset_index(drop=True)
-                team_info_df.index += 1
-                st.dataframe(
-                    team_info_df,
-                    use_container_width=True,
-                    height=TABLE_HEADER_HEIGHT + len(team_info_df) * TABLE_ROW_HEIGHT,
-                    hide_index=False,
-                )
-
-                # Huidige regelcheck tonen
-                huidige_fouten = check_regels(actief_team)
-                if huidige_fouten:
-                    with st.expander("⚠️ Huidige team-regelovertredingen"):
-                        for f in huidige_fouten:
-                            st.warning(f)
-
-                st.divider()
-
-                if wissels_over <= 0:
-                    st.warning("Je hebt alle 5 wissels al gebruikt.")
-                else:
-                    st.subheader("Wissel doorvoeren")
-                    if today_w < WISSEL_START:
-                        st.info(f"ℹ️ Je wissels gaan in op {WISSEL_START.strftime('%d-%m-%Y')} (deadline Brabantse Pijl). Je kunt ze alvast klaarzetten.")
-                    n_w = st.number_input(
-                        f"Hoeveel wissels wil je nu doorvoeren? (max {wissels_over})",
-                        min_value=1, max_value=wissels_over, value=1, step=1, key="n_wissels"
-                    )
-
-                    actief_keys = {_norm_naam(r) for r in actief_team}
-                    beschikbaar = sorted([
-                        r for r in renners_db['renner'].tolist()
-                        if _norm_naam(r) not in actief_keys
-                    ])
-
-                    uit_keuzes = []
-                    in_keuzes  = []
-
-                    for i in range(int(n_w)):
-                        st.markdown(f"**Wissel {i+1}**")
-                        c1, c2 = st.columns(2)
-                        with c1:
-                            opties_uit = [r for r in actief_team if r not in uit_keuzes]
-                            uit = st.selectbox(f"Eruit:", opties_uit, key=f"uit_{i}")
-                            uit_keuzes.append(uit)
-                        with c2:
-                            opties_in = [r for r in beschikbaar if r not in in_keuzes]
-                            inn = st.selectbox(f"Erin:", opties_in, key=f"in_{i}")
-                            in_keuzes.append(inn)
-
-                    # Preview nieuw team
-                    nieuw_team = [r for r in actief_team if r not in uit_keuzes] + in_keuzes
-                    fouten_nieuw = check_regels(nieuw_team)
-
-                    st.markdown("**Preview nieuw team na wissel:**")
-                    nieuw_info = pd.DataFrame([
-                        {'renner': naam, 'team': t, 'land': l, 'categorie': c}
-                        for naam in nieuw_team for t, l, c in [_meta(naam)]
-                    ])
-                    cat_c  = nieuw_info['categorie'].value_counts()
-                    land_c = nieuw_info['land'].value_counts()
-                    ploeg_c = nieuw_info[nieuw_info['team'] != '?']['team'].value_counts()
-                    m1, m2, m3, m4, m5, m6 = st.columns(6)
-                    m1.metric("Totaal", len(nieuw_team))
-                    m2.metric("Toppers", f"{cat_c.get(CAT_TOPPER,0)}/5")
-                    m3.metric("Subtoppers", f"{cat_c.get(CAT_SUBTOPPER,0)}/5")
-                    m4.metric("Renners", f"{cat_c.get(CAT_RENNER,0)} (min 3)")
-                    m5.metric("Max land", f"{land_c[land_c.index != '?'].max() if not land_c.empty else 0}/5")
-                    m6.metric("Max ploeg", f"{ploeg_c.max() if not ploeg_c.empty else 0}/2")
-
-                    if fouten_nieuw:
-                        for f in fouten_nieuw:
-                            st.error(f"❌ {f}")
-                    else:
-                        st.success("✅ Nieuw team voldoet aan alle regels")
-
-                    if st.button("✅ Bevestig wissels opslaan", disabled=bool(fouten_nieuw)):
-                        s_updated = s_all.copy()
-
-                        # Zet tot_datum voor uitgaande renners
-                        for r_uit in uit_keuzes:
-                            idx = s_updated[
-                                (s_updated['speler_naam'] == naam_w) &
-                                (s_updated['renner_naam'] == r_uit) &
-                                (s_updated['tot_datum'].isna() | (s_updated['tot_datum'] == ""))
-                            ].index
-                            s_updated.loc[idx, 'tot_datum'] = wissel_datum
-
-                        # Voeg inkomende renners toe
-                        pin_val      = speler_rows_w['pincode'].iloc[0]
-                        subpoule_val = speler_rows_w['subpoule'].iloc[0] if 'subpoule' in speler_rows_w.columns else ""
-                        email_val    = speler_rows_w['email'].iloc[0] if 'email' in speler_rows_w.columns else ""
-
-                        for r_in in in_keuzes:
-                            new_row = pd.DataFrame([{
-                                'speler_naam': naam_w,
-                                'renner_naam': r_in,
-                                'pincode':     pin_val,
-                                'subpoule':    subpoule_val,
-                                'email':       email_val,
-                                'vanaf_datum': wissel_datum,
-                                'tot_datum':   ""
-                            }])
-                            s_updated = pd.concat([s_updated, new_row], ignore_index=True)
-
-                        # Schrijf terug naar sheet
-                        cols_s = ['speler_naam', 'renner_naam', 'pincode', 'subpoule', 'email', 'vanaf_datum', 'tot_datum']
-                        ws_s = sh.worksheet("speler_teams")
-                        ws_s.clear()
-                        ws_s.update([cols_s] + s_updated[cols_s].fillna("").values.tolist())
-                        st.cache_data.clear()
-                        st.success(f"Wissels opgeslagen! {', '.join(uit_keuzes)} → {', '.join(in_keuzes)}")
-                        time.sleep(1)
-                        st.rerun()
+                # Schrijf terug naar sheet
+                cols_s = ['speler_naam', 'renner_naam', 'pincode', 'subpoule', 'email', 'vanaf_datum', 'tot_datum']
+                ws_s = sh.worksheet("speler_teams")
+                ws_s.clear()
+                ws_s.update([cols_s] + s_updated[cols_s].fillna("").values.tolist())
+                st.cache_data.clear()
+                st.success(f"Wissels opgeslagen! {', '.join(uit_keuzes)} → {', '.join(in_keuzes)}")
+                time.sleep(1)
+                st.rerun()
 
 # =============================================
 # 6. CAPTAINS KIEZEN
@@ -1892,133 +1923,126 @@ with tab_captains:
         st.markdown(html, unsafe_allow_html=True)
 
         st.divider()
-        naam = st.selectbox("Wie ben je?", sorted(s_all['speler_naam'].unique()), key="select_speler")
-        pin = st.text_input("Voer je pincode in:", type="password")
-        
-        if pin:
-            correct_pin = str(s_all[s_all['speler_naam'] == naam]['pincode'].iloc[0])
-            if pin == correct_pin:
-                
-                # --- SECTIE 1: CAPTAINS INSTELLEN ---
-                st.subheader("📝 Captains Instellen")
-                _captain_koersen = list(KOERS_DATA.keys())
-                koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_standaard_koers_index(_captain_koersen))
-                
-                # Check of koers al gestart is
-                deadline_str = KOERS_DATA[koers_keuze]
-                deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
-                is_gestart = datetime.now(_AMS) >= deadline_dt
+        naam = ingelogd_speler
 
-                huidige_keuze = k_all[(k_all['speler_naam'] == naam) & (k_all['koers_naam'] == koers_keuze)]
-                if not huidige_keuze.empty:
-                    st.info(f"Huidige keuze voor {koers_keuze}: 1. {huidige_keuze.iloc[0]['captain_1']}, 2. {huidige_keuze.iloc[0]['captain_2']}, 3. {huidige_keuze.iloc[0]['captain_3']}")
+        # --- SECTIE 1: CAPTAINS INSTELLEN ---
+        st.subheader("📝 Captains Instellen")
+        _captain_koersen = list(KOERS_DATA.keys())
+        koers_keuze = st.selectbox("Voor welke koers?", _captain_koersen, index=get_standaard_koers_index(_captain_koersen))
 
-                if is_gestart:
-                    st.warning(f"⚠️ De deadline voor {koers_keuze} is verstreken ({deadline_str}). Je kunt je captains niet meer wijzigen.")
-                else:
-                    mr = sorted(s_all[s_all['speler_naam'] == naam]['renner_naam'].tolist())
+        # Check of koers al gestart is
+        deadline_str = KOERS_DATA[koers_keuze]
+        deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+        is_gestart = datetime.now(_AMS) >= deadline_dt
 
-                    # Haal startlijst op voor deze koers
-                    sl_data = read_sheet("startlijsten")
-                    if not sl_data.empty:
-                        startlijst_namen = sl_data[sl_data['koers_naam'] == koers_keuze]['rider'].str.lower().tolist()
-                    else:
-                        startlijst_namen = []
+        huidige_keuze = k_all[(k_all['speler_naam'] == naam) & (k_all['koers_naam'] == koers_keuze)]
+        if not huidige_keuze.empty:
+            st.info(f"Huidige keuze voor {koers_keuze}: 1. {huidige_keuze.iloc[0]['captain_1']}, 2. {huidige_keuze.iloc[0]['captain_2']}, 3. {huidige_keuze.iloc[0]['captain_3']}")
 
-                    def verrijk_naam(renner):
-                        if startlijst_namen and renner.lower() in startlijst_namen:
-                            return f"✅ {renner}"
-                        elif startlijst_namen:
-                            return f"○ {renner}"
-                        return renner
+        if is_gestart:
+            st.warning(f"⚠️ De deadline voor {koers_keuze} is verstreken ({deadline_str}). Je kunt je captains niet meer wijzigen.")
+        else:
+            mr = sorted(s_all[s_all['speler_naam'] == naam]['renner_naam'].tolist())
 
-                    # Sorteer: renners op startlijst eerst, daarna de rest
-                    mr_op_startlijst = [verrijk_naam(r) for r in mr if startlijst_namen and r.lower() in startlijst_namen]
-                    mr_niet_op_startlijst = [verrijk_naam(r) for r in mr if not startlijst_namen or r.lower() not in startlijst_namen]
-                    mr_verrijkt = mr_op_startlijst + mr_niet_op_startlijst
-
-                    if startlijst_namen:
-                        st.caption("✅ = staat op startlijst   ○ = niet op startlijst")
-
-                    c1_verrijkt = st.selectbox("Kies Captain 1 (3.0x)", mr_verrijkt)
-                    c2_verrijkt = st.selectbox("Kies Captain 2 (2.5x)", [r for r in mr_verrijkt if r != c1_verrijkt])
-                    c3_verrijkt = st.selectbox("Kies Captain 3 (2.0x)", [r for r in mr_verrijkt if r not in [c1_verrijkt, c2_verrijkt]])
-
-                    # Strip het prefix weer voor opslaan
-                    def strip_prefix(s):
-                        return s.replace("✅ ", "").replace("○ ", "")
-
-                    c1 = strip_prefix(c1_verrijkt)
-                    c2 = strip_prefix(c2_verrijkt)
-                    c3 = strip_prefix(c3_verrijkt)
-                    
-                    if st.button("Captains Opslaan"):
-                        new_entry = pd.DataFrame([{
-                            "speler_naam": naam, 
-                            "koers_naam": koers_keuze, 
-                            "captain_1": c1, 
-                            "captain_2": c2, 
-                            "captain_3": c3
-                        }])
-                        
-                        k_all_clean = k_all.copy()
-                        if not k_all_clean.empty:
-                            masker = (k_all_clean['speler_naam'] == naam) & (k_all_clean['koers_naam'] == koers_keuze)
-                            andere_keuzes = k_all_clean[~masker].copy()
-                            final_k = pd.concat([andere_keuzes, new_entry], ignore_index=True)
-                        else:
-                            final_k = new_entry
-
-                        final_k = final_k.fillna("")
-
-                        try:
-                            ws_k = sh.worksheet("keuzes")
-                            ws_k.clear()
-                            headers = ["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"]
-                            for h in headers:
-                                if h not in final_k.columns:
-                                    final_k[h] = ""
-                            final_k = final_k[headers]
-                            ws_k.update([headers] + final_k.values.tolist())
-                            
-                            st.success(f"Captains voor {koers_keuze} succesvol opgeslagen!")
-                            st.cache_data.clear()
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Fout bij opslaan: {e}")
-
-                st.divider()
-
-                # --- SECTIE 2: OVERZICHT ---
-                st.subheader("🕵️ Overzicht Captains")
-                tab_mijn, tab_alle = st.tabs(["📅 Mijn Overzicht", "🌍 Alle Deelnemers"])
-                
-                with tab_mijn:
-                    st.write("Jouw keuzes voor alle koersen:")
-                    mijn_tabel = k_all[k_all['speler_naam'] == naam].copy()
-                    if not mijn_tabel.empty:
-                        st.dataframe(mijn_tabel[['koers_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(mijn_tabel) * TABLE_ROW_HEIGHT)
-                    else:
-                        st.info("Je hebt nog geen captains ingesteld.")
-
-                with tab_alle:
-                    _alle_koersen = list(KOERS_DATA.keys())
-                    bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_standaard_koers_index(_alle_koersen), key="view_others")
-                    nu = datetime.now(_AMS)
-                    start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
-
-                    if nu < start_tijd:
-                        st.info(f"🤫 De captains voor **{bekijk_koers}** blijven geheim tot de start om {start_tijd.strftime('%H:%M')} uur.")
-                    else:
-                        st.write(f"🔓 De koers is gestart! Hier zijn de keuzes voor {bekijk_koers}:")
-                        andere_keuzes = k_all[k_all['koers_naam'] == bekijk_koers].copy()
-                        if not andere_keuzes.empty:
-                            st.dataframe(andere_keuzes[['speler_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(andere_keuzes) * TABLE_ROW_HEIGHT)
-                        else:
-                            st.info("Niemand heeft captains ingevuld voor deze koers.")
+            # Haal startlijst op voor deze koers
+            sl_data = read_sheet("startlijsten")
+            if not sl_data.empty:
+                startlijst_namen = sl_data[sl_data['koers_naam'] == koers_keuze]['rider'].str.lower().tolist()
             else:
-                st.error("Onjuiste pincode")
+                startlijst_namen = []
+
+            def verrijk_naam(renner):
+                if startlijst_namen and renner.lower() in startlijst_namen:
+                    return f"✅ {renner}"
+                elif startlijst_namen:
+                    return f"○ {renner}"
+                return renner
+
+            # Sorteer: renners op startlijst eerst, daarna de rest
+            mr_op_startlijst = [verrijk_naam(r) for r in mr if startlijst_namen and r.lower() in startlijst_namen]
+            mr_niet_op_startlijst = [verrijk_naam(r) for r in mr if not startlijst_namen or r.lower() not in startlijst_namen]
+            mr_verrijkt = mr_op_startlijst + mr_niet_op_startlijst
+
+            if startlijst_namen:
+                st.caption("✅ = staat op startlijst   ○ = niet op startlijst")
+
+            c1_verrijkt = st.selectbox("Kies Captain 1 (3.0x)", mr_verrijkt)
+            c2_verrijkt = st.selectbox("Kies Captain 2 (2.5x)", [r for r in mr_verrijkt if r != c1_verrijkt])
+            c3_verrijkt = st.selectbox("Kies Captain 3 (2.0x)", [r for r in mr_verrijkt if r not in [c1_verrijkt, c2_verrijkt]])
+
+            # Strip het prefix weer voor opslaan
+            def strip_prefix(s):
+                return s.replace("✅ ", "").replace("○ ", "")
+
+            c1 = strip_prefix(c1_verrijkt)
+            c2 = strip_prefix(c2_verrijkt)
+            c3 = strip_prefix(c3_verrijkt)
+
+            if st.button("Captains Opslaan"):
+                new_entry = pd.DataFrame([{
+                    "speler_naam": naam,
+                    "koers_naam": koers_keuze,
+                    "captain_1": c1,
+                    "captain_2": c2,
+                    "captain_3": c3
+                }])
+
+                k_all_clean = k_all.copy()
+                if not k_all_clean.empty:
+                    masker = (k_all_clean['speler_naam'] == naam) & (k_all_clean['koers_naam'] == koers_keuze)
+                    andere_keuzes = k_all_clean[~masker].copy()
+                    final_k = pd.concat([andere_keuzes, new_entry], ignore_index=True)
+                else:
+                    final_k = new_entry
+
+                final_k = final_k.fillna("")
+
+                try:
+                    ws_k = sh.worksheet("keuzes")
+                    ws_k.clear()
+                    headers = ["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"]
+                    for h in headers:
+                        if h not in final_k.columns:
+                            final_k[h] = ""
+                    final_k = final_k[headers]
+                    ws_k.update([headers] + final_k.values.tolist())
+
+                    st.success(f"Captains voor {koers_keuze} succesvol opgeslagen!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Fout bij opslaan: {e}")
+
+        st.divider()
+
+        # --- SECTIE 2: OVERZICHT ---
+        st.subheader("🕵️ Overzicht Captains")
+        tab_mijn, tab_alle = st.tabs(["📅 Mijn Overzicht", "🌍 Alle Deelnemers"])
+
+        with tab_mijn:
+            st.write("Jouw keuzes voor alle koersen:")
+            mijn_tabel = k_all[k_all['speler_naam'] == naam].copy()
+            if not mijn_tabel.empty:
+                st.dataframe(mijn_tabel[['koers_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(mijn_tabel) * TABLE_ROW_HEIGHT)
+            else:
+                st.info("Je hebt nog geen captains ingesteld.")
+
+        with tab_alle:
+            _alle_koersen = list(KOERS_DATA.keys())
+            bekijk_koers = st.selectbox("Bekijk captains voor:", _alle_koersen, index=get_standaard_koers_index(_alle_koersen), key="view_others")
+            nu = datetime.now(_AMS)
+            start_tijd = datetime.strptime(KOERS_DATA[bekijk_koers], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+
+            if nu < start_tijd:
+                st.info(f"🤫 De captains voor **{bekijk_koers}** blijven geheim tot de start om {start_tijd.strftime('%H:%M')} uur.")
+            else:
+                st.write(f"🔓 De koers is gestart! Hier zijn de keuzes voor {bekijk_koers}:")
+                andere_keuzes = k_all[k_all['koers_naam'] == bekijk_koers].copy()
+                if not andere_keuzes.empty:
+                    st.dataframe(andere_keuzes[['speler_naam', 'captain_1', 'captain_2', 'captain_3']], hide_index=True, use_container_width=True, height=TABLE_HEADER_HEIGHT + len(andere_keuzes) * TABLE_ROW_HEIGHT)
+                else:
+                    st.info("Niemand heeft captains ingevuld voor deze koers.")
 
 # =============================================
 # 6. ADMIN
