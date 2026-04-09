@@ -1211,7 +1211,10 @@ ingelogd_speler = st.session_state['ingelogd_speler']
 
 # Logout via query param (?logout=1)
 if st.query_params.get("logout") == "1":
-    cookie_manager.delete(_COOKIE_NAME)
+    try:
+        cookie_manager.delete(_COOKIE_NAME)
+    except (KeyError, Exception):
+        pass  # cookie was al verwijderd of nog niet geladen
     st.session_state['ingelogd_speler'] = None
     st.query_params.clear()
     st.rerun()
@@ -1228,7 +1231,10 @@ st.markdown(f"""
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
             <span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>
             <span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>
-            <a href="?logout=1" style="font-size:10px;color:rgba(255,120,80,0.85);text-decoration:none;margin-top:1px;">🚪 uitloggen</a>
+            <form action="" method="get" style="margin:0;padding:0;">
+                <input type="hidden" name="logout" value="1">
+                <button type="submit" style="background:transparent;border:none;color:rgba(255,120,80,0.85);cursor:pointer;font-size:10px;padding:0;margin-top:1px;">🚪 uitloggen</button>
+            </form>
         </div>
     </div>
 </div>
