@@ -1153,16 +1153,6 @@ def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners)
 
 # --- MAIN APP NAVIGATIE ---
 
-# Topnavigatie header
-st.markdown("""
-<div class="nav-container">
-    <div class="nav-header">
-        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Klassiekerspel</div>
-        <div class="nav-season">🚴&nbsp;&nbsp;Seizoen 2026</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
 PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
 
 # Data inladen via Google Sheets
@@ -1219,19 +1209,30 @@ if st.session_state['ingelogd_speler'] is None:
 
 ingelogd_speler = st.session_state['ingelogd_speler']
 
+# Logout via query param (?logout=1)
+if st.query_params.get("logout") == "1":
+    cookie_manager.delete(_COOKIE_NAME)
+    st.session_state['ingelogd_speler'] = None
+    st.query_params.clear()
+    st.rerun()
+
 # Haal e-mailadres op van ingelogde speler
 _speler_row = s_all[s_all['speler_naam'] == ingelogd_speler]
 ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
 
-# Sidebar: ingelogd als + uitlogknop
-with st.sidebar:
-    st.markdown(f"👤 **{ingelogd_speler}**")
-    if ingelogd_email:
-        st.caption(ingelogd_email)
-    if st.button("🚪 Uitloggen"):
-        cookie_manager.delete(_COOKIE_NAME)
-        st.session_state['ingelogd_speler'] = None
-        st.rerun()
+# Dynamische nav header met user info + uitloglink rechtsboven
+st.markdown(f"""
+<div class="nav-container">
+    <div class="nav-header">
+        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Klassiekerspel</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>
+            <span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>
+            <a href="?logout=1" style="font-size:10px;color:rgba(255,120,80,0.85);text-decoration:none;margin-top:1px;">🚪 uitloggen</a>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_wissels, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
