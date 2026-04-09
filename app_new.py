@@ -1625,7 +1625,7 @@ with tab_team:
 with tab_wissels:
     st.title("🔄 Wissels")
 
-    WISSEL_START    = pd.to_datetime("2026-04-13")   # dag na Paris-Roubaix
+    WISSEL_START    = pd.to_datetime("2026-04-15")   # deadline Brabantse Pijl
     MAX_WISSELS     = 5
     CAT_TOPPER      = "max5 topper"
     CAT_SUBTOPPER   = "max5 subtopper"
@@ -1747,7 +1747,7 @@ with tab_wissels:
                 else:
                     st.subheader("Wissel doorvoeren")
                     if today_w < WISSEL_START:
-                        st.info(f"ℹ️ Je wissels gaan in op {WISSEL_START.strftime('%d-%m-%Y')} (na Paris-Roubaix). Je kunt ze alvast klaarzetten.")
+                        st.info(f"ℹ️ Je wissels gaan in op {WISSEL_START.strftime('%d-%m-%Y')} (deadline Brabantse Pijl). Je kunt ze alvast klaarzetten.")
                     n_w = st.number_input(
                         f"Hoeveel wissels wil je nu doorvoeren? (max {wissels_over})",
                         min_value=1, max_value=wissels_over, value=1, step=1, key="n_wissels"
