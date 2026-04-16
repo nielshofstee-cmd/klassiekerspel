@@ -1678,9 +1678,32 @@ with tab_team:
         spelers = sorted(s_all['speler_naam'].unique())
         default_idx = spelers.index(ingelogd_speler) if ingelogd_speler in spelers else 0
         speler = st.selectbox("Naam:", spelers, index=default_idx)
-        
-        # Haal de renners op
-        mr = s_all[s_all['speler_naam'] == speler]['renner_naam'].tolist()
+
+        # Bepaal weergave-datum: team zoals het was op het moment van de
+        # laatste verlopen race-deadline. Zo worden wissel-renners pas
+        # zichtbaar nadat de deadline van die koers is verstreken.
+        _nu_team = datetime.now(_AMS)
+        _verstreken = [
+            datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+            for k in KOERS_DATA
+            if datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS) <= _nu_team
+        ]
+        if _verstreken:
+            _display_date = pd.to_datetime(max(_verstreken).date())
+        else:
+            _display_date = pd.to_datetime("2000-01-01")  # vóór eerste race: toon alles
+
+        # Filter actieve renners op weergave-datum
+        _speler_rows_t = s_all[s_all['speler_naam'] == speler].copy()
+        _mask_t = (
+            (pd.to_datetime(_speler_rows_t['vanaf_datum'], errors='coerce') <= _display_date) &
+            (
+                _speler_rows_t['tot_datum'].isna() |
+                (_speler_rows_t['tot_datum'] == "") |
+                (pd.to_datetime(_speler_rows_t['tot_datum'], errors='coerce') > _display_date)
+            )
+        )
+        mr = _speler_rows_t[_mask_t]['renner_naam'].tolist()
         
         r_data = []
         with st.spinner('Punten berekenen...'):
