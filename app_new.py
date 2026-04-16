@@ -1599,8 +1599,20 @@ with tab_matrix:
         beschikbare_koersen = u_all['koers_naam'].unique()
         koersen = [k for k in volgorde if k in beschikbare_koersen]
         
-        # Haal ALLE renners op die de speler ooit heeft gehad
+        # Bepaal display_date: laatste verlopen race-deadline
+        _nu_mx = datetime.now(_AMS)
+        _verstreken_mx = [
+            datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS)
+            for k in KOERS_DATA
+            if datetime.strptime(KOERS_DATA[k], "%Y-%m-%d %H:%M").replace(tzinfo=_AMS) <= _nu_mx
+        ]
+        _display_date_mx = pd.to_datetime(max(_verstreken_mx).date()) if _verstreken_mx else pd.to_datetime("2000-01-01")
+
+        # Haal renners op: uitgaande altijd, inkomende pas na display_date
         mijn_renners_df = s_all[s_all['speler_naam'] == speler]
+        mijn_renners_df = mijn_renners_df[
+            pd.to_datetime(mijn_renners_df['vanaf_datum'], errors='coerce') <= _display_date_mx
+        ]
         mijn_renners = sorted(mijn_renners_df['renner_naam'].unique().tolist())
         
         matrix = []
@@ -1693,16 +1705,11 @@ with tab_team:
         else:
             _display_date = pd.to_datetime("2000-01-01")  # vóór eerste race: toon alles
 
-        # Filter actieve renners op weergave-datum
+        # Filter actieve renners op weergave-datum:
+        # - Uitgaande renners (tot_datum gezet): altijd zichtbaar (historische punten)
+        # - Inkomende renners (vanaf_datum in toekomst): pas na display_date
         _speler_rows_t = s_all[s_all['speler_naam'] == speler].copy()
-        _mask_t = (
-            (pd.to_datetime(_speler_rows_t['vanaf_datum'], errors='coerce') <= _display_date) &
-            (
-                _speler_rows_t['tot_datum'].isna() |
-                (_speler_rows_t['tot_datum'] == "") |
-                (pd.to_datetime(_speler_rows_t['tot_datum'], errors='coerce') > _display_date)
-            )
-        )
+        _mask_t = (pd.to_datetime(_speler_rows_t['vanaf_datum'], errors='coerce') <= _display_date)
         mr = _speler_rows_t[_mask_t]['renner_naam'].tolist()
         
         r_data = []
