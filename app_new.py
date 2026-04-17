@@ -2022,7 +2022,18 @@ with tab_captains:
         if is_gestart:
             st.warning(f"⚠️ De deadline voor {koers_keuze} is verstreken ({deadline_str}). Je kunt je captains niet meer wijzigen.")
         else:
-            mr = sorted(s_all[s_all['speler_naam'] == naam]['renner_naam'].tolist())
+            # Alleen renners die actief zijn op de datum van deze koers
+            koers_datum_cap = pd.to_datetime(deadline_str.split(" ")[0])
+            _rows_cap = s_all[s_all['speler_naam'] == naam].copy()
+            _mask_cap = (
+                (pd.to_datetime(_rows_cap['vanaf_datum'], errors='coerce') <= koers_datum_cap) &
+                (
+                    _rows_cap['tot_datum'].isna() |
+                    (_rows_cap['tot_datum'] == "") |
+                    (pd.to_datetime(_rows_cap['tot_datum'], errors='coerce') > koers_datum_cap)
+                )
+            )
+            mr = sorted(_rows_cap[_mask_cap]['renner_naam'].tolist())
 
             # Haal startlijst op voor deze koers
             sl_data = read_sheet("startlijsten")
