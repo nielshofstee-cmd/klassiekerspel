@@ -1244,7 +1244,7 @@ ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'emai
 st.markdown(f"""
 <div class="nav-container">
     <div class="nav-header">
-        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Klassiekerspel</div>
+        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
             <span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>
             <span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>
@@ -1256,6 +1256,42 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# =============================================
+# SPEL SELECTOR
+# =============================================
+st.markdown("""
+<style>
+div[data-testid="stHorizontalBlock"] > div:has(> div[data-testid="stRadio"]) {
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 10px 16px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+gekozen_spel = st.radio(
+    "Kies een spel",
+    ["🚴 Klassiekerspel", "🇮🇹 Giro", "🇫🇷 Tour", "🇪🇸 Vuelta"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
+if gekozen_spel != "🚴 Klassiekerspel":
+    spel_naam = gekozen_spel.split(" ", 1)[1]
+    tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
+    with tab_ploeg:
+        st.title(f"👥 Ploeg Selectie – {spel_naam}")
+        st.info(
+            f"De ploeg selectie voor het **{spel_naam}** komt binnenkort beschikbaar. "
+            "Houd deze pagina in de gaten voor meer informatie over de regels en het selecteren van jouw ploeg."
+        )
+        st.markdown("---")
+        st.markdown(
+            f"**Regels voor {spel_naam}** worden hier gepubliceerd zodra het spel van start gaat.",
+            unsafe_allow_html=False,
+        )
+    st.stop()
 
 tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_wissels, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
