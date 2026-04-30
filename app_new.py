@@ -21,7 +21,7 @@ _AMS = ZoneInfo("Europe/Amsterdam")
 # py -m streamlit run app_new.py         >> C:\Users\hofsteen\OneDrive - HEMA\Niels HEMA\Python projects\wielerspel\Wielerspel 2.0
 
 # --- CONFIGURATIE ---
-st.set_page_config(page_title="K1xSam Klassiekerspel 2026", page_icon="🚴‍♂️", layout="wide")
+st.set_page_config(page_title="K1xSam Wielerspel 2026", page_icon="🚴‍♂️", layout="wide")
 
 # --- CUSTOM CSS STYLING ---
 st.markdown("""
@@ -1240,11 +1240,32 @@ if st.query_params.get("logout") == "1":
 _speler_row = s_all[s_all['speler_naam'] == ingelogd_speler]
 ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
 
+# Actief spel bepalen voor badge in nav
+_huidig_spel = st.query_params.get("spel", "")
+_SPEL_LABELS = {
+    "klassiekerspel": "🚴 Klassiekerspel",
+    "giro": "🇮🇹 Giro",
+    "tour": "🇫🇷 Tour",
+    "vuelta": "🇪🇸 Vuelta",
+}
+_spel_badge = (
+    f'<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.75);'
+    f'background:rgba(255,255,255,0.10);padding:3px 10px;border-radius:20px;'
+    f'border:1px solid rgba(255,255,255,0.15);margin-left:12px;letter-spacing:0.5px;">'
+    f'{_SPEL_LABELS.get(_huidig_spel, "")}</span>'
+    if _huidig_spel else ""
+)
+
 # Dynamische nav header met user info + uitloglink rechtsboven
 st.markdown(f"""
 <div class="nav-container">
     <div class="nav-header">
-        <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</div>
+        <div style="display:flex;align-items:center;">
+            <a href="/" style="text-decoration:none;">
+                <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</div>
+            </a>
+            {_spel_badge}
+        </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
             <span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>
             <span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>
@@ -1258,41 +1279,170 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =============================================
-# SPEL SELECTOR
+# ROUTING OP BASIS VAN ?spel= QUERY PARAM
 # =============================================
-st.markdown("""
-<style>
-div[data-testid="stHorizontalBlock"] > div:has(> div[data-testid="stRadio"]) {
-    background: rgba(255,255,255,0.04);
-    border-radius: 12px;
-    padding: 10px 16px;
-}
-</style>
-""", unsafe_allow_html=True)
+_GELDIGE_SPELLEN = {"klassiekerspel", "giro", "tour", "vuelta"}
+_spel_param = st.query_params.get("spel", "").lower().strip()
 
-gekozen_spel = st.radio(
-    "Kies een spel",
-    ["🚴 Klassiekerspel", "🇮🇹 Giro", "🇫🇷 Tour", "🇪🇸 Vuelta"],
-    horizontal=True,
-    label_visibility="collapsed",
-)
+# Onbekende waarde → redirect naar home
+if _spel_param and _spel_param not in _GELDIGE_SPELLEN:
+    st.query_params.clear()
+    st.rerun()
 
-if gekozen_spel != "🚴 Klassiekerspel":
-    spel_naam = gekozen_spel.split(" ", 1)[1]
+# ── LANDING PAGE (geen ?spel= param) ─────────────────────────────────────────
+if _spel_param == "":
+    st.markdown("""
+    <style>
+    .spel-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+        margin: 48px 0 32px 0;
+    }
+    @media (max-width: 900px) {
+        .spel-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 500px) {
+        .spel-grid { grid-template-columns: 1fr; }
+    }
+    .spel-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        border-radius: 20px;
+        padding: 40px 24px 36px 24px;
+        text-decoration: none;
+        color: #0d1f35;
+        box-shadow: 0 4px 24px rgba(13,31,53,0.10);
+        border: 1.5px solid #d8e0eb;
+        transition: box-shadow 0.2s ease, transform 0.18s ease, border-color 0.18s ease;
+        min-height: 220px;
+        cursor: pointer;
+    }
+    .spel-card:hover {
+        box-shadow: 0 12px 40px rgba(13,31,53,0.18);
+        transform: translateY(-4px);
+        border-color: #f47c20;
+        text-decoration: none;
+    }
+    .spel-card-icon {
+        font-size: 52px;
+        line-height: 1;
+        margin-bottom: 18px;
+    }
+    .spel-card-title {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 26px;
+        letter-spacing: 2px;
+        color: #0d1f35;
+        margin-bottom: 6px;
+        line-height: 1;
+    }
+    .spel-card-sub {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        color: #8a9ab5;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+    .spel-card-badge {
+        margin-top: 14px;
+        background: #f47c20;
+        color: white;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 20px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .spel-card-soon {
+        margin-top: 14px;
+        background: #eef1f6;
+        color: #8a9ab5;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 20px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .landing-title {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 2.2rem;
+        color: #0d1f35;
+        letter-spacing: 2px;
+        margin-bottom: 4px;
+    }
+    .landing-sub {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 15px;
+        color: #5a6a82;
+        margin-bottom: 0;
+    }
+    </style>
+
+    <div style="margin-top:32px;">
+        <div class="landing-title">Kies een spel</div>
+        <div class="landing-sub">Selecteer een van de vier wielerspellen om door te gaan.</div>
+    </div>
+
+    <div class="spel-grid">
+        <a href="?spel=klassiekerspel" class="spel-card">
+            <div class="spel-card-icon">🚴</div>
+            <div class="spel-card-title">Klassiekerspel</div>
+            <div class="spel-card-sub">Voorjaarswedstrijden 2026</div>
+            <div class="spel-card-badge">Actief</div>
+        </a>
+        <a href="?spel=giro" class="spel-card">
+            <div class="spel-card-icon">🇮🇹</div>
+            <div class="spel-card-title">Giro d'Italia</div>
+            <div class="spel-card-sub">Grote ronde · Mei 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+        <a href="?spel=tour" class="spel-card">
+            <div class="spel-card-icon">🇫🇷</div>
+            <div class="spel-card-title">Tour de France</div>
+            <div class="spel-card-sub">Grote ronde · Juli 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+        <a href="?spel=vuelta" class="spel-card">
+            <div class="spel-card-icon">🇪🇸</div>
+            <div class="spel-card-title">Vuelta a España</div>
+            <div class="spel-card-sub">Grote ronde · Augustus 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
+# ── PLACEHOLDER VOOR GIRO / TOUR / VUELTA ────────────────────────────────────
+if _spel_param in ("giro", "tour", "vuelta"):
+    _SPEL_INFO = {
+        "giro":   ("🇮🇹", "Giro d'Italia",   "Mei 2026"),
+        "tour":   ("🇫🇷", "Tour de France",  "Juli 2026"),
+        "vuelta": ("🇪🇸", "Vuelta a España", "Augustus 2026"),
+    }
+    _icon, _naam, _periode = _SPEL_INFO[_spel_param]
     tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
     with tab_ploeg:
-        st.title(f"👥 Ploeg Selectie – {spel_naam}")
+        st.title(f"{_icon} {_naam} – Ploeg Selectie")
         st.info(
-            f"De ploeg selectie voor het **{spel_naam}** komt binnenkort beschikbaar. "
+            f"De ploeg selectie voor de **{_naam}** ({_periode}) komt binnenkort beschikbaar. "
             "Houd deze pagina in de gaten voor meer informatie over de regels en het selecteren van jouw ploeg."
         )
-        st.markdown("---")
         st.markdown(
-            f"**Regels voor {spel_naam}** worden hier gepubliceerd zodra het spel van start gaat.",
-            unsafe_allow_html=False,
+            f"Zodra het spel van start gaat worden hier de **regels**, het **puntenschema** en de "
+            f"**ploeg selectie** voor de {_naam} gepubliceerd.",
         )
     st.stop()
 
+# ── KLASSIEKERSPEL ────────────────────────────────────────────────────────────
 tab_klas, tab_uitslag, tab_startlijst, tab_matrix, tab_team, tab_wissels, tab_captains, tab_admin = st.tabs(PAGINA_OPTIES)
 
 # =============================================
