@@ -1257,26 +1257,22 @@ _spel_badge = (
 )
 
 # Dynamische nav header met user info + uitloglink rechtsboven
-st.markdown(f"""
-<div class="nav-container">
-    <div class="nav-header">
-        <div style="display:flex;align-items:center;">
-            <a href="/" style="text-decoration:none;">
-                <span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span>
-            </a>
-            {_spel_badge}
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-            <span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>
-            <span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>
-            <form action="" method="get" style="margin:0;padding:0;">
-                <input type="hidden" name="logout" value="1">
-                <button type="submit" style="background:transparent;border:none;color:rgba(255,120,80,0.85);cursor:pointer;font-size:10px;padding:0;margin-top:1px;">🚪 uitloggen</button>
-            </form>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+_nav_html = (
+    f'<div class="nav-container"><div class="nav-header">'
+    f'<div style="display:flex;align-items:center;">'
+    f'<a href="/" style="text-decoration:none;"><span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span></a>'
+    f'{_spel_badge}'
+    f'</div>'
+    f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">'
+    f'<span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {ingelogd_speler}</span>'
+    f'<span style="font-size:10px;color:rgba(255,255,255,0.45);">{ingelogd_email}</span>'
+    f'<form action="" method="get" style="margin:0;padding:0;">'
+    f'<input type="hidden" name="logout" value="1">'
+    f'<button type="submit" style="background:transparent;border:none;color:rgba(255,120,80,0.85);cursor:pointer;font-size:10px;padding:0;margin-top:1px;">🚪 uitloggen</button>'
+    f'</form>'
+    f'</div></div></div>'
+)
+st.markdown(_nav_html, unsafe_allow_html=True)
 
 # =============================================
 # ROUTING OP BASIS VAN ?spel= QUERY PARAM
