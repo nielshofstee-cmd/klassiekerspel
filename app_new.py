@@ -1262,7 +1262,7 @@ st.markdown(f"""
     <div class="nav-header">
         <div style="display:flex;align-items:center;">
             <a href="/" style="text-decoration:none;">
-                <div class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</div>
+                <span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span>
             </a>
             {_spel_badge}
         </div>
