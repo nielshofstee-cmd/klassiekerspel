@@ -1172,6 +1172,7 @@ PAGINA_OPTIES = ["🏆 Klassement", "🏁 Uitslagen", "🚦 Startlijsten", "📊
 # Data inladen via Google Sheets
 u_all = read_sheet("uitslagen")
 s_all = read_sheet("speler_teams")
+creds_all = read_sheet("speler_credentials")
 k_all = read_sheet("keuzes")
 if k_all is None or k_all.empty:
     k_all = pd.DataFrame(columns=["speler_naam", "koers_naam", "captain_1", "captain_2", "captain_3"])
@@ -1199,13 +1200,14 @@ if st.session_state['ingelogd_speler'] is None and not st.session_state.get('uit
 
 if st.session_state['ingelogd_speler'] is None:
     st.subheader("🔐 Inloggen")
-    if not s_all.empty and 'email' in s_all.columns:
+    _login_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
+    if not _login_src.empty and 'email' in _login_src.columns:
         col_login, _ = st.columns([1, 2])
         with col_login:
             email_in = st.text_input("E-mailadres:")
             pin_in   = st.text_input("Pincode:", type="password")
             if st.button("Inloggen", type="primary"):
-                match = s_all[s_all['email'].str.strip().str.lower() == email_in.strip().lower()]
+                match = _login_src[_login_src['email'].str.strip().str.lower() == email_in.strip().lower()]
                 if match.empty:
                     st.error("E-mailadres niet gevonden.")
                 else:
@@ -1236,8 +1238,9 @@ if st.query_params.get("logout") == "1":
     st.query_params.clear()
     st.rerun()
 
-# Haal e-mailadres op van ingelogde speler
-_speler_row = s_all[s_all['speler_naam'] == ingelogd_speler]
+# Haal e-mailadres op van ingelogde speler (uit credentials sheet)
+_creds_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
+_speler_row = _creds_src[_creds_src['speler_naam'] == ingelogd_speler]
 ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
 
 # Actief spel bepalen voor badge in nav
@@ -1594,17 +1597,19 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                 ~((_pr_ex['speler_naam'] == ingelogd_speler) &
                                   (_pr_ex['spel'] == _spel_param))
                             ]
+                        _vandaag = datetime.now(_AMS).strftime("%Y-%m-%d")
                         _pr_new = pd.DataFrame([
-                            {"speler_naam": ingelogd_speler, "spel": _spel_param, "renner_naam": r}
+                            {"speler_naam": ingelogd_speler, "spel": _spel_param,
+                             "renner_naam": r, "vanaf_datum": _vandaag, "tot_datum": ""}
                             for r in gekozen_r
                         ])
-                        _pr_final = pd.concat([_pr_ex, _pr_new], ignore_index=True)[
-                            ["speler_naam","spel","renner_naam"]
-                        ]
+                        _COLS_PR = ["speler_naam","spel","renner_naam","vanaf_datum","tot_datum"]
+                        for _c in _COLS_PR:
+                            if _c not in _pr_ex.columns:
+                                _pr_ex[_c] = ""
+                        _pr_final = pd.concat([_pr_ex, _pr_new], ignore_index=True)[_COLS_PR]
                         _ws_pr.clear()
-                        _ws_pr.update(
-                            [["speler_naam","spel","renner_naam"]] + _pr_final.values.tolist()
-                        )
+                        _ws_pr.update([_COLS_PR] + _pr_final.values.tolist())
                         st.cache_data.clear()
                         st.success(f"✅ Ploeg opgeslagen voor {_naam}! ({len(gekozen_r)} renners)")
                     except Exception as _e:
