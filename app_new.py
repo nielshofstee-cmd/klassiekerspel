@@ -1252,9 +1252,9 @@ ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'emai
 _huidig_spel = st.query_params.get("spel", "")
 _SPEL_LABELS = {
     "klassiekerspel": "🚴 Klassiekerspel",
-    "giro": "🇮🇹 Giro",
-    "tour": "🇫🇷 Tour",
-    "vuelta": "🇪🇸 Vuelta",
+    "giro":   '<img src="https://flagcdn.com/w20/it.png" style="height:13px;border-radius:2px;vertical-align:middle;margin-right:5px;"> Giro',
+    "tour":   '<img src="https://flagcdn.com/w20/fr.png" style="height:13px;border-radius:2px;vertical-align:middle;margin-right:5px;"> Tour',
+    "vuelta": '<img src="https://flagcdn.com/w20/es.png" style="height:13px;border-radius:2px;vertical-align:middle;margin-right:5px;"> Vuelta',
 }
 _spel_badge = (
     f'<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.75);'
@@ -1428,11 +1428,14 @@ if _spel_param == "":
 # ── PLOEG SELECTIE VOOR GROTE RONDES ─────────────────────────────────────────
 if _spel_param in ("giro", "tour", "vuelta"):
     _SPEL_INFO = {
-        "giro":   ("🇮🇹", "Giro d'Italia",   "Mei 2026",      "categorie giro"),
-        "tour":   ("🇫🇷", "Tour de France",  "Juli 2026",     "categorie tour"),
-        "vuelta": ("🇪🇸", "Vuelta a España", "Augustus 2026", "categorie vuelta"),
+        "giro":   ("it", "Giro d'Italia",   "Mei 2026",      "categorie giro"),
+        "tour":   ("fr", "Tour de France",  "Juli 2026",     "categorie tour"),
+        "vuelta": ("es", "Vuelta a España", "Augustus 2026", "categorie vuelta"),
     }
-    _icon, _naam, _periode, _cat_col = _SPEL_INFO[_spel_param]
+    _flag_code, _naam, _periode, _cat_col = _SPEL_INFO[_spel_param]
+    _flag_img_lg = (f'<img src="https://flagcdn.com/w80/{_flag_code}.png" '
+                    f'style="height:36px;border-radius:3px;vertical-align:middle;'
+                    f'margin-right:12px;box-shadow:0 2px 6px rgba(0,0,0,0.18);">')
 
     MAX_RENNERS_R   = 25
     MAX_PER_PLOEG_R = 2
@@ -1487,7 +1490,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
     tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
     with tab_ploeg:
-        st.title(f"{_icon} {_naam} – Ploeg Selectie")
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Ploeg Selectie</h1>', unsafe_allow_html=True)
 
         if _r_race.empty:
             st.warning(
