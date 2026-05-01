@@ -652,12 +652,17 @@ else:
 def read_sheet(worksheet_name):
     try:
         # Een kleine random pauze helpt tegen de '429 Too Many Requests' error
-        time.sleep(random.uniform(0.5, 1.5)) 
+        time.sleep(random.uniform(0.5, 1.5))
         worksheet = sh.worksheet(worksheet_name)
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
-        # Clean de kolommen (kleine letters, geen spaties)
-        df.columns = [str(c).strip().lower() for c in df.columns]
+        # get_all_values() ipv get_all_records() om te voorkomen dat lege/dubbele
+        # kolomkoppen een exception gooien (bijv. extra lege kolommen in de sheet)
+        values = worksheet.get_all_values()
+        if not values:
+            return pd.DataFrame()
+        headers = [str(h).strip().lower() for h in values[0]]
+        df = pd.DataFrame(values[1:], columns=headers)
+        # Verwijder kolommen zonder naam (lege header)
+        df = df.loc[:, df.columns != '']
         return df
     except Exception as e:
         if "429" in str(e):
@@ -1437,11 +1442,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
     MIN_RENNER_R    = 3
 
     def _cat_type_ronde(cat):
+        # Exacte waarden: "Max5 topper", "Max5 subtopper", "Min3 renner"
         c = str(cat).strip().lower()
         if "subtopper" in c: return "subtopper"
         if "topper" in c:    return "topper"
         if "renner" in c:    return "renner"
-        return c
+        return "renner"  # leeg of onbekend telt als minrenner
 
     # Alle renners laden; categorie-kolom alleen voor constraint-check
     _r_df = read_sheet("renners")
