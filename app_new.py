@@ -1469,9 +1469,11 @@ if _spel_param in ("giro", "tour", "vuelta"):
     _saved_r = []
     try:
         _ws_pr_read = sh.worksheet("speler_teams_rondes")
-        _pr_raw = pd.DataFrame(_ws_pr_read.get_all_records())
-        if not _pr_raw.empty:
-            _pr_raw.columns = [str(c).strip().lower() for c in _pr_raw.columns]
+        _pr_vals = _ws_pr_read.get_all_values()
+        if len(_pr_vals) > 1:
+            _pr_hdrs = [str(h).strip().lower() for h in _pr_vals[0]]
+            _pr_raw  = pd.DataFrame(_pr_vals[1:], columns=_pr_hdrs)
+            _pr_raw  = _pr_raw.loc[:, _pr_raw.columns != '']
             if all(c in _pr_raw.columns for c in ["speler_naam","spel","renner_naam"]):
                 _saved_r = _pr_raw[
                     (_pr_raw['speler_naam'] == ingelogd_speler) &
@@ -1480,6 +1482,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
     except Exception:
         pass
 
+    # Vriendelijke categorielabels (voor filter en tabel)
+    _CAT_DISPLAY = {"topper": "Max5 topper", "subtopper": "Max5 subtopper", "renner": "Min3 renner"}
+
     tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
     with tab_ploeg:
         st.title(f"{_icon} {_naam} – Ploeg Selectie")
@@ -1487,19 +1492,28 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _r_race.empty:
             st.warning(
                 f"Geen renners gevonden voor **{_naam}**. "
-                f"Zorg dat de kolom **'{_cat_col}'** aanwezig is in de renners-sheet."
+                f"Zorg dat de renners-sheet beschikbaar is."
             )
         else:
             alle_namen_r = sorted(_r_race['renner'].dropna().unique().tolist())
             standaard_r  = [r for r in _saved_r if r in alle_namen_r]
 
+            # Opgeslagen status tonen
+            if standaard_r:
+                st.info(f"💾 Je hebt **{len(standaard_r)} renners** opgeslagen voor {_naam}. "
+                        f"Voeg meer toe of pas je selectie aan en sla opnieuw op.")
+            else:
+                st.caption(f"Nog geen ploeg opgeslagen voor {_naam}.")
+
             # ── Renners overzicht (opvouwbaar) ───────────────────────────────
             with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)})", expanded=False):
                 _ov_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
                 _ov = _r_race[_ov_cols].copy().rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
+                _ov['Categorie'] = _ov['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
+                _cat_opts = ["Alle"] + list(_CAT_DISPLAY.values())
                 _cat_filter = st.selectbox(
                     "Filter op categorie",
-                    ["Alle", "topper", "subtopper", "renner"],
+                    _cat_opts,
                     key=f"cat_filter_{_spel_param}",
                 )
                 if _cat_filter != "Alle":
@@ -1514,7 +1528,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             with col_sel_r:
                 st.subheader(f"Selecteer jouw ploeg")
                 gekozen_r = st.multiselect(
-                    f"Kies {MAX_RENNERS_R} renners (typ om te zoeken):",
+                    f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
                     options=alle_namen_r,
                     default=standaard_r,
                     key=f"ploeg_{_spel_param}",
@@ -1539,7 +1553,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     def _chk(ok, txt):
                         return f"{'✅' if ok else '❌'} {txt}"
 
-                    st.markdown(_chk(_n == MAX_RENNERS_R,
+                    st.markdown(_chk(_n <= MAX_RENNERS_R,
                         f"Totaal: **{_n} / {MAX_RENNERS_R}** renners"))
                     st.markdown(_chk(not _ploeg_viol,
                         f"Max {MAX_PER_PLOEG_R} per ploeg"
@@ -1548,14 +1562,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         f"Max {MAX_PER_LAND_R} per land"
                         + (f"  \n&nbsp;&nbsp;⚠ {', '.join(_land_viol)}" if _land_viol else "")))
                     st.markdown(_chk(_n_top <= MAX_TOPPER_R,
-                        f"Toppers: **{_n_top} / {MAX_TOPPER_R}** (max)"))
+                        f"Max5 topper: **{_n_top} / {MAX_TOPPER_R}**"))
                     st.markdown(_chk(_n_sub <= MAX_SUBTOPPER_R,
-                        f"Subtoppers: **{_n_sub} / {MAX_SUBTOPPER_R}** (max)"))
+                        f"Max5 subtopper: **{_n_sub} / {MAX_SUBTOPPER_R}**"))
                     st.markdown(_chk(_n_ren >= MIN_RENNER_R,
-                        f"Minrenners: **{_n_ren}** (min {MIN_RENNER_R})"))
+                        f"Min3 renner: **{_n_ren}** (min {MIN_RENNER_R})"))
 
                     _all_ok_r = (
-                        _n == MAX_RENNERS_R
+                        _n <= MAX_RENNERS_R
                         and not _ploeg_viol
                         and not _land_viol
                         and _n_top  <= MAX_TOPPER_R
@@ -1565,9 +1579,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     if _all_ok_r:
                         st.success("Alle regels zijn OK!")
                     else:
-                        st.warning("Los de bovenstaande punten op voor je opslaat.")
+                        st.caption("ℹ️ Je kunt tussentijds opslaan; pas wel de regels aan voor de deadline.")
                 else:
-                    _all_ok_r = False
+                    _all_ok_r = True
                     st.info("Selecteer renners om de regels te controleren.")
 
             # Geselecteerde ploeg tabel
@@ -1577,16 +1591,17 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _show_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
                 _show_r = _r_race[_r_race['renner'].isin(gekozen_r)][_show_cols].copy()
                 _show_r = _show_r.rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
+                _show_r['Categorie'] = _show_r['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
                 _show_r = _show_r.sort_values(['Categorie','Renner']).reset_index(drop=True)
                 st.dataframe(_show_r, use_container_width=True, hide_index=True,
                              height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_show_r), 25))
 
-            # Opslaan
+            # Opslaan — altijd mogelijk zolang er renners geselecteerd zijn
             st.markdown("---")
             _btn_col, _ = st.columns([1, 3])
             with _btn_col:
-                _save_disabled = not (gekozen_r and _all_ok_r) if gekozen_r else True
-                if st.button("💾 Ploeg opslaan", type="primary", disabled=_save_disabled,
+                if st.button("💾 Ploeg opslaan", type="primary",
+                             disabled=not gekozen_r,
                              key=f"save_{_spel_param}"):
                     try:
                         try:
