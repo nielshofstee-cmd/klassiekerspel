@@ -1443,19 +1443,19 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if "renner" in c:    return "renner"
         return c
 
-    # Renners laden en filteren op deelname aan dit spel
+    # Alle renners laden; categorie-kolom alleen voor constraint-check
     _r_df = read_sheet("renners")
     if not _r_df.empty:
         _nc_r = next((c for c in ['renner','naam','name','rider','renner_naam'] if c in _r_df.columns), _r_df.columns[0])
         if _nc_r != 'renner':
             _r_df = _r_df.rename(columns={_nc_r: 'renner'})
 
-    if not _r_df.empty and _cat_col in _r_df.columns:
-        _r_race = _r_df[_r_df[_cat_col].astype(str).str.strip() != ""].copy()
-        _r_race['_cat'] = _r_race[_cat_col].map(_cat_type_ronde)
-    elif not _r_df.empty:
+    if not _r_df.empty:
         _r_race = _r_df.copy()
-        _r_race['_cat'] = "renner"
+        if _cat_col in _r_race.columns:
+            _r_race['_cat'] = _r_race[_cat_col].map(_cat_type_ronde)
+        else:
+            _r_race['_cat'] = "renner"
     else:
         _r_race = pd.DataFrame()
 
