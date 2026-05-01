@@ -1417,25 +1417,199 @@ if _spel_param == "":
     """, unsafe_allow_html=True)
     st.stop()
 
-# ── PLACEHOLDER VOOR GIRO / TOUR / VUELTA ────────────────────────────────────
+# ── PLOEG SELECTIE VOOR GROTE RONDES ─────────────────────────────────────────
 if _spel_param in ("giro", "tour", "vuelta"):
     _SPEL_INFO = {
-        "giro":   ("🇮🇹", "Giro d'Italia",   "Mei 2026"),
-        "tour":   ("🇫🇷", "Tour de France",  "Juli 2026"),
-        "vuelta": ("🇪🇸", "Vuelta a España", "Augustus 2026"),
+        "giro":   ("🇮🇹", "Giro d'Italia",   "Mei 2026",      "categorie giro"),
+        "tour":   ("🇫🇷", "Tour de France",  "Juli 2026",     "categorie tour"),
+        "vuelta": ("🇪🇸", "Vuelta a España", "Augustus 2026", "categorie vuelta"),
     }
-    _icon, _naam, _periode = _SPEL_INFO[_spel_param]
+    _icon, _naam, _periode, _cat_col = _SPEL_INFO[_spel_param]
+
+    MAX_RENNERS_R   = 25
+    MAX_PER_PLOEG_R = 2
+    MAX_PER_LAND_R  = 5
+    MAX_TOPPER_R    = 5
+    MAX_SUBTOPPER_R = 5
+    MIN_RENNER_R    = 3
+
+    def _cat_type_ronde(cat):
+        c = str(cat).strip().lower()
+        if "subtopper" in c: return "subtopper"
+        if "topper" in c:    return "topper"
+        if "renner" in c:    return "renner"
+        return c
+
+    # Renners laden en filteren op deelname aan dit spel
+    _r_df = read_sheet("renners")
+    if not _r_df.empty:
+        _nc_r = next((c for c in ['renner','naam','name','rider','renner_naam'] if c in _r_df.columns), _r_df.columns[0])
+        if _nc_r != 'renner':
+            _r_df = _r_df.rename(columns={_nc_r: 'renner'})
+
+    if not _r_df.empty and _cat_col in _r_df.columns:
+        _r_race = _r_df[_r_df[_cat_col].astype(str).str.strip() != ""].copy()
+        _r_race['_cat'] = _r_race[_cat_col].map(_cat_type_ronde)
+    elif not _r_df.empty:
+        _r_race = _r_df.copy()
+        _r_race['_cat'] = "renner"
+    else:
+        _r_race = pd.DataFrame()
+
+    # Opgeslagen ploeg ophalen (geen fout als sheet nog niet bestaat)
+    _saved_r = []
+    try:
+        _ws_pr_read = sh.worksheet("ploeg_rondes")
+        _pr_raw = pd.DataFrame(_ws_pr_read.get_all_records())
+        if not _pr_raw.empty:
+            _pr_raw.columns = [str(c).strip().lower() for c in _pr_raw.columns]
+            if all(c in _pr_raw.columns for c in ["speler_naam","spel","renner_naam"]):
+                _saved_r = _pr_raw[
+                    (_pr_raw['speler_naam'] == ingelogd_speler) &
+                    (_pr_raw['spel'] == _spel_param)
+                ]['renner_naam'].tolist()
+    except Exception:
+        pass
+
     tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
     with tab_ploeg:
         st.title(f"{_icon} {_naam} – Ploeg Selectie")
-        st.info(
-            f"De ploeg selectie voor de **{_naam}** ({_periode}) komt binnenkort beschikbaar. "
-            "Houd deze pagina in de gaten voor meer informatie over de regels en het selecteren van jouw ploeg."
-        )
-        st.markdown(
-            f"Zodra het spel van start gaat worden hier de **regels**, het **puntenschema** en de "
-            f"**ploeg selectie** voor de {_naam} gepubliceerd.",
-        )
+
+        if _r_race.empty:
+            st.warning(
+                f"Geen renners gevonden voor **{_naam}**. "
+                f"Zorg dat de kolom **'{_cat_col}'** aanwezig is in de renners-sheet."
+            )
+        else:
+            alle_namen_r = sorted(_r_race['renner'].dropna().unique().tolist())
+            standaard_r  = [r for r in _saved_r if r in alle_namen_r]
+
+            # ── Renners overzicht (opvouwbaar) ───────────────────────────────
+            with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)})", expanded=False):
+                _ov_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
+                _ov = _r_race[_ov_cols].copy().rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
+                _cat_filter = st.selectbox(
+                    "Filter op categorie",
+                    ["Alle", "topper", "subtopper", "renner"],
+                    key=f"cat_filter_{_spel_param}",
+                )
+                if _cat_filter != "Alle":
+                    _ov = _ov[_ov['Categorie'] == _cat_filter]
+                st.dataframe(_ov.sort_values(['Categorie','Renner']).reset_index(drop=True),
+                             use_container_width=True, hide_index=True,
+                             height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_ov), 20))
+
+            st.markdown("---")
+            col_sel_r, col_chk_r = st.columns([3, 2])
+
+            with col_sel_r:
+                st.subheader(f"Selecteer jouw ploeg")
+                gekozen_r = st.multiselect(
+                    f"Kies {MAX_RENNERS_R} renners (typ om te zoeken):",
+                    options=alle_namen_r,
+                    default=standaard_r,
+                    key=f"ploeg_{_spel_param}",
+                )
+                _pct = int(len(gekozen_r) / MAX_RENNERS_R * 100)
+                st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
+
+            with col_chk_r:
+                st.subheader("Regels check")
+                if gekozen_r:
+                    _sel = _r_race[_r_race['renner'].isin(gekozen_r)].copy()
+                    _n      = len(gekozen_r)
+                    _n_top  = int((_sel['_cat'] == 'topper').sum())
+                    _n_sub  = int((_sel['_cat'] == 'subtopper').sum())
+                    _n_ren  = int((_sel['_cat'] == 'renner').sum())
+
+                    _ploeg_cnt = _sel['team'].value_counts() if 'team' in _sel.columns else pd.Series(dtype=int)
+                    _land_cnt  = _sel['land'].value_counts() if 'land' in _sel.columns else pd.Series(dtype=int)
+                    _ploeg_viol = _ploeg_cnt[_ploeg_cnt > MAX_PER_PLOEG_R].index.tolist()
+                    _land_viol  = _land_cnt[_land_cnt  > MAX_PER_LAND_R ].index.tolist()
+
+                    def _chk(ok, txt):
+                        return f"{'✅' if ok else '❌'} {txt}"
+
+                    st.markdown(_chk(_n == MAX_RENNERS_R,
+                        f"Totaal: **{_n} / {MAX_RENNERS_R}** renners"))
+                    st.markdown(_chk(not _ploeg_viol,
+                        f"Max {MAX_PER_PLOEG_R} per ploeg"
+                        + (f"  \n&nbsp;&nbsp;⚠ {', '.join(_ploeg_viol)}" if _ploeg_viol else "")))
+                    st.markdown(_chk(not _land_viol,
+                        f"Max {MAX_PER_LAND_R} per land"
+                        + (f"  \n&nbsp;&nbsp;⚠ {', '.join(_land_viol)}" if _land_viol else "")))
+                    st.markdown(_chk(_n_top <= MAX_TOPPER_R,
+                        f"Toppers: **{_n_top} / {MAX_TOPPER_R}** (max)"))
+                    st.markdown(_chk(_n_sub <= MAX_SUBTOPPER_R,
+                        f"Subtoppers: **{_n_sub} / {MAX_SUBTOPPER_R}** (max)"))
+                    st.markdown(_chk(_n_ren >= MIN_RENNER_R,
+                        f"Minrenners: **{_n_ren}** (min {MIN_RENNER_R})"))
+
+                    _all_ok_r = (
+                        _n == MAX_RENNERS_R
+                        and not _ploeg_viol
+                        and not _land_viol
+                        and _n_top  <= MAX_TOPPER_R
+                        and _n_sub  <= MAX_SUBTOPPER_R
+                        and _n_ren  >= MIN_RENNER_R
+                    )
+                    if _all_ok_r:
+                        st.success("Alle regels zijn OK!")
+                    else:
+                        st.warning("Los de bovenstaande punten op voor je opslaat.")
+                else:
+                    _all_ok_r = False
+                    st.info("Selecteer renners om de regels te controleren.")
+
+            # Geselecteerde ploeg tabel
+            if gekozen_r:
+                st.markdown("---")
+                st.subheader("Geselecteerde ploeg")
+                _show_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
+                _show_r = _r_race[_r_race['renner'].isin(gekozen_r)][_show_cols].copy()
+                _show_r = _show_r.rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
+                _show_r = _show_r.sort_values(['Categorie','Renner']).reset_index(drop=True)
+                st.dataframe(_show_r, use_container_width=True, hide_index=True,
+                             height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_show_r), 25))
+
+            # Opslaan
+            st.markdown("---")
+            _btn_col, _ = st.columns([1, 3])
+            with _btn_col:
+                _save_disabled = not (gekozen_r and _all_ok_r) if gekozen_r else True
+                if st.button("💾 Ploeg opslaan", type="primary", disabled=_save_disabled,
+                             key=f"save_{_spel_param}"):
+                    try:
+                        try:
+                            _ws_pr = sh.worksheet("ploeg_rondes")
+                            _pr_ex = pd.DataFrame(_ws_pr.get_all_records())
+                            if not _pr_ex.empty:
+                                _pr_ex.columns = [str(c).strip().lower() for c in _pr_ex.columns]
+                        except gspread.exceptions.WorksheetNotFound:
+                            _ws_pr = sh.add_worksheet("ploeg_rondes", rows=2000, cols=5)
+                            _pr_ex = pd.DataFrame(columns=["speler_naam","spel","renner_naam"])
+
+                        if not _pr_ex.empty and 'speler_naam' in _pr_ex.columns:
+                            _pr_ex = _pr_ex[
+                                ~((_pr_ex['speler_naam'] == ingelogd_speler) &
+                                  (_pr_ex['spel'] == _spel_param))
+                            ]
+                        _pr_new = pd.DataFrame([
+                            {"speler_naam": ingelogd_speler, "spel": _spel_param, "renner_naam": r}
+                            for r in gekozen_r
+                        ])
+                        _pr_final = pd.concat([_pr_ex, _pr_new], ignore_index=True)[
+                            ["speler_naam","spel","renner_naam"]
+                        ]
+                        _ws_pr.clear()
+                        _ws_pr.update(
+                            [["speler_naam","spel","renner_naam"]] + _pr_final.values.tolist()
+                        )
+                        st.cache_data.clear()
+                        st.success(f"✅ Ploeg opgeslagen voor {_naam}! ({len(gekozen_r)} renners)")
+                    except Exception as _e:
+                        st.error(f"Fout bij opslaan: {_e}")
+
     st.stop()
 
 # ── KLASSIEKERSPEL ────────────────────────────────────────────────────────────
