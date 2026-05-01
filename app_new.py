@@ -1437,11 +1437,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
     MIN_RENNER_R    = 3
 
     def _cat_type_ronde(cat):
+        # Exacte waarden: "Max5 topper", "Max5 subtopper", "Min3 renner"
         c = str(cat).strip().lower()
         if "subtopper" in c: return "subtopper"
         if "topper" in c:    return "topper"
         if "renner" in c:    return "renner"
-        return c
+        return "renner"  # leeg of onbekend telt als minrenner
 
     # Alle renners laden; categorie-kolom alleen voor constraint-check
     _r_df = read_sheet("renners")
