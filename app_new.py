@@ -1404,19 +1404,19 @@ if _spel_param == "":
             <div class="spel-card-badge">Actief</div>
         </a>
         <a href="?spel=giro" class="spel-card">
-            <div class="spel-card-icon">🇮🇹</div>
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/it.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
             <div class="spel-card-title">Giro d'Italia</div>
             <div class="spel-card-sub">Grote ronde · Mei 2026</div>
             <div class="spel-card-soon">Binnenkort</div>
         </a>
         <a href="?spel=tour" class="spel-card">
-            <div class="spel-card-icon">🇫🇷</div>
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/fr.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
             <div class="spel-card-title">Tour de France</div>
             <div class="spel-card-sub">Grote ronde · Juli 2026</div>
             <div class="spel-card-soon">Binnenkort</div>
         </a>
         <a href="?spel=vuelta" class="spel-card">
-            <div class="spel-card-icon">🇪🇸</div>
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/es.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
             <div class="spel-card-title">Vuelta a España</div>
             <div class="spel-card-sub">Grote ronde · Augustus 2026</div>
             <div class="spel-card-soon">Binnenkort</div>
