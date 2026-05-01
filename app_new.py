@@ -1447,7 +1447,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if "subtopper" in c: return "subtopper"
         if "topper" in c:    return "topper"
         if "renner" in c:    return "renner"
-        return "renner"  # leeg of onbekend telt als minrenner
+        return ""  # leeg/onbekend = nog niet ingedeeld
 
     # Alle renners laden; categorie-kolom alleen voor constraint-check
     _r_df = read_sheet("renners")
@@ -1483,7 +1483,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
         pass
 
     # Vriendelijke categorielabels (voor filter en tabel)
-    _CAT_DISPLAY = {"topper": "Max5 topper", "subtopper": "Max5 subtopper", "renner": "Min3 renner"}
+    _CAT_DISPLAY = {"topper": "Max5 topper", "subtopper": "Max5 subtopper", "renner": "Min3 renner", "": "—"}
 
     tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
     with tab_ploeg:
@@ -1510,7 +1510,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _ov_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
                 _ov = _r_race[_ov_cols].copy().rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
                 _ov['Categorie'] = _ov['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
-                _cat_opts = ["Alle"] + list(_CAT_DISPLAY.values())
+                _cat_opts = ["Alle", "Max5 topper", "Max5 subtopper", "Min3 renner", "—"]
                 _cat_filter = st.selectbox(
                     "Filter op categorie",
                     _cat_opts,
