@@ -1459,7 +1459,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # Opgeslagen ploeg ophalen (geen fout als sheet nog niet bestaat)
     _saved_r = []
     try:
-        _ws_pr_read = sh.worksheet("ploeg_rondes")
+        _ws_pr_read = sh.worksheet("speler_teams_rondes")
         _pr_raw = pd.DataFrame(_ws_pr_read.get_all_records())
         if not _pr_raw.empty:
             _pr_raw.columns = [str(c).strip().lower() for c in _pr_raw.columns]
@@ -1581,12 +1581,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                              key=f"save_{_spel_param}"):
                     try:
                         try:
-                            _ws_pr = sh.worksheet("ploeg_rondes")
+                            _ws_pr = sh.worksheet("speler_teams_rondes")
                             _pr_ex = pd.DataFrame(_ws_pr.get_all_records())
                             if not _pr_ex.empty:
                                 _pr_ex.columns = [str(c).strip().lower() for c in _pr_ex.columns]
                         except gspread.exceptions.WorksheetNotFound:
-                            _ws_pr = sh.add_worksheet("ploeg_rondes", rows=2000, cols=5)
+                            _ws_pr = sh.add_worksheet("speler_teams_rondes", rows=2000, cols=5)
                             _pr_ex = pd.DataFrame(columns=["speler_naam","spel","renner_naam"])
 
                         if not _pr_ex.empty and 'speler_naam' in _pr_ex.columns:
