@@ -1505,9 +1505,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
             else:
                 _r_race['_starter'] = False
 
-            # Weergavenaam: bevestigde starters krijgen ✓ achteraan
+            # Weergavenaam: bevestigde starters krijgen ✅ achteraan
             _r_race['_disp'] = _r_race.apply(
-                lambda row: f"{row['renner']} ✓" if row['_starter'] else row['renner'], axis=1
+                lambda row: f"{row['renner']} ✅" if row['_starter'] else row['renner'], axis=1
             )
             # Starters eerst, daarna alfabetisch
             _r_sorted = _r_race.sort_values(['_starter', 'renner'], ascending=[False, True])
@@ -1526,12 +1526,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
             # ── Renners overzicht (opvouwbaar) ───────────────────────────────
             _n_starters = int(_r_race['_starter'].sum())
-            with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)}, waarvan {_n_starters} ✓ bevestigd)", expanded=False):
+            with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)}, waarvan {_n_starters} ✅ bevestigd)", expanded=False):
                 _ov_cols = [c for c in ['renner','_starter','_cat','team','land'] if c in _r_race.columns]
                 _ov = _r_race[_ov_cols].copy().rename(columns={
                     'renner':'Renner','_starter':'Starter','_cat':'Categorie','team':'Ploeg','land':'Land'
                 })
-                _ov['Starter']   = _ov['Starter'].map({True: '✓', False: ''})
+                _ov['Starter']   = _ov['Starter'].map({True: '✅', False: ''})
                 _ov['Categorie'] = _ov['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
                 _cat_opts = ["Alle", "Max5 topper", "Max5 subtopper", "Min3 renner", "—"]
                 _cat_filter = st.selectbox(
@@ -1552,7 +1552,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
             with col_sel_r:
                 st.subheader(f"Selecteer jouw ploeg")
-                st.caption("✓ = bevestigd op de startlijst · starters staan bovenaan")
+                st.caption("✅ = bevestigd op de startlijst · starters staan bovenaan")
                 _gekozen_disp = st.multiselect(
                     f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
                     options=alle_namen_r,
@@ -1560,7 +1560,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     key=f"ploeg_{_spel_param}",
                 )
                 # Converteer weergavenamen terug naar echte namen
-                gekozen_r = [_disp2naam.get(d, d.replace(' ✓', '').strip()) for d in _gekozen_disp]
+                gekozen_r = [_disp2naam.get(d, d.replace(' ✅', '').strip()) for d in _gekozen_disp]
                 _pct = int(len(gekozen_r) / MAX_RENNERS_R * 100)
                 st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
 
