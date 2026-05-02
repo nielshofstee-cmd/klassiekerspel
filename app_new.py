@@ -1498,8 +1498,24 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 f"Zorg dat de renners-sheet beschikbaar is."
             )
         else:
-            alle_namen_r = sorted(_r_race['renner'].dropna().unique().tolist())
-            standaard_r  = [r for r in _saved_r if r in alle_namen_r]
+            # Startlijst kolom opzoeken (bijv. 'giro pcs startlist')
+            _sl_col = f"{_spel_param} pcs startlist"
+            if _sl_col in _r_race.columns:
+                _r_race['_starter'] = _r_race[_sl_col].astype(str).str.strip().str.lower() == "true"
+            else:
+                _r_race['_starter'] = False
+
+            # Weergavenaam: bevestigde starters krijgen ✓ achteraan
+            _r_race['_disp'] = _r_race.apply(
+                lambda row: f"{row['renner']} ✓" if row['_starter'] else row['renner'], axis=1
+            )
+            # Starters eerst, daarna alfabetisch
+            _r_sorted = _r_race.sort_values(['_starter', 'renner'], ascending=[False, True])
+            alle_namen_r   = _r_sorted['_disp'].dropna().tolist()
+            _disp2naam = dict(zip(_r_race['_disp'], _r_race['renner']))
+            _naam2disp = dict(zip(_r_race['renner'], _r_race['_disp']))
+
+            standaard_r = [_naam2disp.get(r, r) for r in _saved_r if _naam2disp.get(r, r) in alle_namen_r]
 
             # Opgeslagen status tonen
             if standaard_r:
@@ -1509,9 +1525,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.caption(f"Nog geen ploeg opgeslagen voor {_naam}.")
 
             # ── Renners overzicht (opvouwbaar) ───────────────────────────────
-            with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)})", expanded=False):
-                _ov_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
-                _ov = _r_race[_ov_cols].copy().rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
+            _n_starters = int(_r_race['_starter'].sum())
+            with st.expander(f"📋 Alle beschikbare renners ({len(alle_namen_r)}, waarvan {_n_starters} ✓ bevestigd)", expanded=False):
+                _ov_cols = [c for c in ['renner','_starter','_cat','team','land'] if c in _r_race.columns]
+                _ov = _r_race[_ov_cols].copy().rename(columns={
+                    'renner':'Renner','_starter':'Starter','_cat':'Categorie','team':'Ploeg','land':'Land'
+                })
+                _ov['Starter']   = _ov['Starter'].map({True: '✓', False: ''})
                 _ov['Categorie'] = _ov['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
                 _cat_opts = ["Alle", "Max5 topper", "Max5 subtopper", "Min3 renner", "—"]
                 _cat_filter = st.selectbox(
@@ -1521,21 +1541,26 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
                 if _cat_filter != "Alle":
                     _ov = _ov[_ov['Categorie'] == _cat_filter]
-                st.dataframe(_ov.sort_values(['Categorie','Renner']).reset_index(drop=True),
-                             use_container_width=True, hide_index=True,
-                             height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_ov), 20))
+                st.dataframe(
+                    _ov.sort_values(['Starter','Renner'], ascending=[False, True]).reset_index(drop=True),
+                    use_container_width=True, hide_index=True,
+                    height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_ov), 20)
+                )
 
             st.markdown("---")
             col_sel_r, col_chk_r = st.columns([3, 2])
 
             with col_sel_r:
                 st.subheader(f"Selecteer jouw ploeg")
-                gekozen_r = st.multiselect(
+                st.caption("✓ = bevestigd op de startlijst · starters staan bovenaan")
+                _gekozen_disp = st.multiselect(
                     f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
                     options=alle_namen_r,
                     default=standaard_r,
                     key=f"ploeg_{_spel_param}",
                 )
+                # Converteer weergavenamen terug naar echte namen
+                gekozen_r = [_disp2naam.get(d, d.replace(' ✓', '').strip()) for d in _gekozen_disp]
                 _pct = int(len(gekozen_r) / MAX_RENNERS_R * 100)
                 st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
 
