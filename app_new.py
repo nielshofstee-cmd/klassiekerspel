@@ -1767,8 +1767,10 @@ if _spel_param in ("giro", "tour", "vuelta"):
             else:
                 # Normalize column names
                 _etappes_df.columns = [c.strip().lower() for c in _etappes_df.columns]
-                # Filter to this spel if a 'spel' column exists
-                if 'spel' in _etappes_df.columns:
+                # Filter by 'ronde' column (giro/tour/vuelta)
+                if 'ronde' in _etappes_df.columns:
+                    _etappes_df = _etappes_df[_etappes_df['ronde'].str.strip().str.lower() == _spel_param]
+                elif 'spel' in _etappes_df.columns:
                     _etappes_df = _etappes_df[_etappes_df['spel'].str.strip().str.lower() == _spel_param]
 
                 st.subheader("📋 Etappes")
