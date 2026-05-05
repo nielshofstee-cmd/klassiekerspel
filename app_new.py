@@ -2402,6 +2402,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                     else:
                                         st.error(_db_rows)
 
+        elif _beh_pw:
             st.error("Onjuist wachtwoord.")
 
     st.stop()
