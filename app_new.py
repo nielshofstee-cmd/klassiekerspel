@@ -664,6 +664,8 @@ def read_sheet(worksheet_name):
         # Verwijder kolommen zonder naam (lege header)
         df = df.loc[:, df.columns != '']
         return df
+    except gspread.exceptions.WorksheetNotFound:
+        return pd.DataFrame()
     except Exception as e:
         if "429" in str(e):
             st.error("Google limiet bereikt. Wacht even en ververs de pagina.")
