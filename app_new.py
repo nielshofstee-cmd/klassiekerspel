@@ -1129,6 +1129,96 @@ def scrape_pcs_resultaat(url, limit=None):
         return False, str(e)
 
 
+def scrape_pcs_oranje_schildjes(url):
+    """
+    Scrapt renners met een oranje schild van een PCS etappe-pagina.
+    Zoekt naar SVG/span/icon-elementen in de renner-cel met oranje kleur-kenmerken.
+    Geeft (True, list_of_dicts) of (False, foutmelding) terug.
+    """
+    import re as _re_sh
+    _RE_ORANJE = _re_sh.compile(
+        r'(shield|escape|breakaway|attack|aggressive|orange|'
+        r'#[eEfF][0-9a-fA-F]{5}|#[eEfF][0-9a-fA-F]{3}|'
+        r'fill\s*[=:]\s*["\']?\s*#[eEfF])',
+        _re_sh.I
+    )
+    try:
+        resp = _pcs_get(url.rstrip('/') + '/')
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
+
+        table = soup.find('table', class_=lambda c: c and 'results' in c)
+        if not table:
+            for t in soup.find_all('table'):
+                if t.find('a', href=lambda h: h and 'rider/' in h):
+                    table = t
+                    break
+        if not table:
+            return False, "Geen resultatentabel gevonden."
+
+        data = []
+        tbody = table.find('tbody') or table
+        for row in tbody.find_all('tr'):
+            cols = row.find_all('td')
+            if len(cols) < 2:
+                continue
+            rank_td = cols[0]
+            span_r = rank_td.find('span')
+            rank = (span_r.text if span_r else rank_td.text).strip()
+            rider, team = '', ''
+            for a in row.find_all('a', href=True):
+                href = a['href']
+                if 'rider/' in href and not rider:
+                    rider = a.text.strip()
+                elif 'team/' in href and not team:
+                    team = a.text.strip()
+            if not rider:
+                continue
+
+            rider_cell = next((td for td in cols if td.find('a', href=lambda h: h and 'rider/' in h)), None)
+            has_shield = False
+            if rider_cell:
+                for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em']):
+                    cls_str = ' '.join(elem.get('class', []))
+                    style_str = elem.get('style', '')
+                    title_str = elem.get('title', '')
+                    src_str = elem.get('src', '')
+                    combined = f"{cls_str} {style_str} {title_str} {src_str} {str(elem)[:300]}"
+                    if _RE_ORANJE.search(combined):
+                        has_shield = True
+                        break
+            if has_shield:
+                data.append({'rank': rank, 'rider': rider, 'team': team})
+
+        if not data:
+            return False, "Geen renners met oranje schild gevonden op deze pagina."
+        return True, data
+    except Exception as e:
+        return False, str(e)
+
+
+def debug_pcs_row_html(url, max_rows=5):
+    """Geeft de ruwe HTML van de eerste max_rows rijen van de PCS resultaten tabel."""
+    try:
+        resp = _pcs_get(url.rstrip('/') + '/')
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade."
+        table = soup.find('table', class_=lambda c: c and 'results' in c)
+        if not table:
+            for t in soup.find_all('table'):
+                if t.find('a', href=lambda h: h and 'rider/' in h):
+                    table = t
+                    break
+        if not table:
+            return False, "Geen tabel gevonden."
+        tbody = table.find('tbody') or table
+        rows = [str(r) for r in tbody.find_all('tr')[:max_rows] if r.find_all('td')]
+        return True, rows
+    except Exception as e:
+        return False, str(e)
+
 def save_ronde_uitslagen(spel, etappe, type_result, data):
     """Slaat gescrapete resultaten op in de 'uitslagen_rondes' sheet."""
     COLS = ['spel', 'etappe', 'type_result', 'rank', 'rider', 'team']
@@ -2280,7 +2370,38 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                     _all_ok = False
                             if _all_ok:
                                 st.balloons()
-        elif _beh_pw:
+
+                        st.divider()
+
+                        # Oranje schildjes
+                        _url_etappe_val = next((v for k, _, v in _available if k == "url_etappe"), "")
+                        if _url_etappe_val:
+                            st.subheader("🟠 Oranje schildjes")
+                            st.caption("Scrapt alleen renners met een oranje schild (vlucht/aanval) van de etappe-pagina.")
+                            if st.button("🟠 Scrape oranje schildjes", key=f"scrape_schild_{_spel_param}_{_gekozen_etappe}"):
+                                with st.spinner("Scrapen van oranje schildjes..."):
+                                    _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
+                                if _sh_ok:
+                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
+                                    if _sv_ok:
+                                        st.success(f"✅ {_sv_msg}")
+                                        st.dataframe(_sh_result, use_container_width=True)
+                                    else:
+                                        st.error(f"Opslaan mislukt: {_sv_msg}")
+                                else:
+                                    st.error(f"Scrapen mislukt: {_sh_result}")
+
+                            with st.expander("🔍 Debug: bekijk ruwe HTML van eerste rijen"):
+                                if st.button("Haal HTML op", key=f"debug_html_{_spel_param}_{_gekozen_etappe}"):
+                                    with st.spinner("HTML ophalen..."):
+                                        _db_ok, _db_rows = debug_pcs_row_html(_url_etappe_val, max_rows=3)
+                                    if _db_ok:
+                                        for _i_db, _row_html in enumerate(_db_rows):
+                                            st.markdown(f"**Rij {_i_db + 1}:**")
+                                            st.code(_row_html, language="html")
+                                    else:
+                                        st.error(_db_rows)
+
             st.error("Onjuist wachtwoord.")
 
     st.stop()
