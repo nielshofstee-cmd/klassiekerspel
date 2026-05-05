@@ -1892,9 +1892,30 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _pr_df_all_ronde.empty:
             st.info("Nog geen ploegen opgeslagen voor dit spel.")
         else:
-            _spelers_tm = sorted(_pr_df_all_ronde['speler_naam'].unique())
-            _def_tm = _spelers_tm.index(ingelogd_speler) if ingelogd_speler in _spelers_tm else 0
-            _speler_tm = st.selectbox("Deelnemer:", _spelers_tm, index=_def_tm, key=f"tm_sp_{_spel_param}")
+            # Bepaal deadline etappe 1 → na die tijd zijn andere teams zichtbaar
+            _et1_deadline = None
+            if not _etappes_ronde.empty and 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
+                _et1_row = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == "1"]
+                if not _et1_row.empty:
+                    _dl1_str = str(_et1_row.iloc[0].get('deadline', '')).strip()
+                    for _fmt1 in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                        try:
+                            _et1_deadline = datetime.strptime(_dl1_str, _fmt1).replace(tzinfo=_AMS)
+                            break
+                        except ValueError:
+                            pass
+
+            _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
+
+            if _giro_gestart:
+                _spelers_tm = sorted(_pr_df_all_ronde['speler_naam'].unique())
+                _def_tm = _spelers_tm.index(ingelogd_speler) if ingelogd_speler in _spelers_tm else 0
+                _speler_tm = st.selectbox("Deelnemer:", _spelers_tm, index=_def_tm, key=f"tm_sp_{_spel_param}")
+            else:
+                _speler_tm = ingelogd_speler
+                if _et1_deadline:
+                    st.info(f"🔒 Teams van andere deelnemers zijn zichtbaar na de start van de {_naam} ({_et1_deadline.strftime('%d-%m-%Y %H:%M')}).")
+
             _sp_renners_tm = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_tm]['renner_naam'].tolist()
             if not _sp_renners_tm:
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
