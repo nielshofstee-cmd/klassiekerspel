@@ -1075,7 +1075,98 @@ def scrape_startlijst_en_save(koers_naam, url):
     except Exception as e:
         return False, f"Startlijst fout: {str(e)}"
 
-# --- REKEN LOGICA (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
+
+def scrape_pcs_resultaat(url):
+    """
+    Generieke PCS scraper voor etappe-uitslag, GC, punten, KOM en youth.
+    Dezelfde tabel-parsing als scrape_en_save() maar zonder sheet-opslag.
+    Geeft (True, list_of_dicts) of (False, foutmelding) terug.
+    """
+    try:
+        resp = _pcs_get(url.rstrip('/') + '/')
+        soup = BeautifulSoup(resp.text, 'html.parser')
+
+        if soup.title and 'just a moment' in soup.title.text.lower():
+            return False, "Cloudflare blokkade. Probeer later opnieuw."
+
+        table = soup.find('table', class_=lambda c: c and 'results' in c)
+        if not table:
+            for t in soup.find_all('table'):
+                if t.find('a', href=lambda h: h and 'rider/' in h):
+                    table = t
+                    break
+
+        if not table:
+            return False, "Geen resultatentabel gevonden op deze pagina."
+
+        data = []
+        tbody = table.find('tbody') or table
+        for row in tbody.find_all('tr'):
+            cols = row.find_all('td')
+            if len(cols) < 2:
+                continue
+            rank_td = cols[0]
+            span = rank_td.find('span')
+            rank = (span.text if span else rank_td.text).strip()
+            rider, team = '', ''
+            for a in row.find_all('a', href=True):
+                href = a['href']
+                if 'rider/' in href and not rider:
+                    rider = a.text.strip()
+                elif 'team/' in href and not team:
+                    team = a.text.strip()
+            if rider and rank and rank.upper() != 'DNS':
+                data.append({'rank': rank.upper() if not rank.isdigit() else rank,
+                             'rider': rider, 'team': team})
+
+        if not data:
+            return False, "Geen renners gevonden in de tabel. Is de uitslag al beschikbaar?"
+        return True, data
+    except Exception as e:
+        return False, str(e)
+
+
+def save_ronde_uitslagen(spel, etappe, type_result, data):
+    """Slaat gescrapete resultaten op in de 'uitslagen_rondes' sheet."""
+    COLS = ['spel', 'etappe', 'type_result', 'rank', 'rider', 'team']
+    try:
+        try:
+            ws = sh.worksheet('uitslagen_rondes')
+            vals = ws.get_all_values()
+            if len(vals) > 1:
+                hdrs = [h.strip().lower() for h in vals[0]]
+                existing = pd.DataFrame(vals[1:], columns=hdrs)
+                existing = existing.loc[:, existing.columns != '']
+            else:
+                existing = pd.DataFrame(columns=COLS)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet('uitslagen_rondes', rows=5000, cols=8)
+            existing = pd.DataFrame(columns=COLS)
+
+        if not existing.empty and all(c in existing.columns for c in ['spel', 'etappe', 'type_result']):
+            existing = existing[
+                ~((existing['spel'] == str(spel)) &
+                  (existing['etappe'].astype(str) == str(etappe)) &
+                  (existing['type_result'] == str(type_result)))
+            ]
+
+        new_rows = pd.DataFrame([
+            {'spel': spel, 'etappe': str(etappe), 'type_result': type_result,
+             'rank': r['rank'], 'rider': r['rider'], 'team': r['team']}
+            for r in data
+        ])
+        for c in COLS:
+            if c not in existing.columns:
+                existing[c] = ''
+        final = pd.concat([existing[COLS], new_rows], ignore_index=True)
+        ws.clear()
+        ws.update([COLS] + final.values.tolist())
+        st.cache_data.clear()
+        return True, f"{len(data)} resultaten opgeslagen (etappe {etappe} – {type_result})."
+    except Exception as e:
+        return False, str(e)
+
+ (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
 @st.cache_data(ttl=60)
 def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners):
     # Lokale kopieën maken om de originele data niet te beschadigen
@@ -1488,7 +1579,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # Vriendelijke categorielabels (voor filter en tabel)
     _CAT_DISPLAY = {"topper": "Max5 topper", "subtopper": "Max5 subtopper", "renner": "Min3 renner", "": "—"}
 
-    tab_ploeg, = st.tabs(["👥 Ploeg Selectie"])
+    tab_ploeg, tab_beheer = st.tabs(["👥 Ploeg Selectie", "⚙️ Beheer"])
     with tab_ploeg:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Ploeg Selectie</h1>', unsafe_allow_html=True)
 
@@ -1664,6 +1755,91 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         st.success(f"✅ Ploeg opgeslagen voor {_naam}! ({len(gekozen_r)} renners)")
                     except Exception as _e:
                         st.error(f"Fout bij opslaan: {_e}")
+
+    with tab_beheer:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Beheer</h1>', unsafe_allow_html=True)
+        _beh_pw = st.text_input("Voer het admin-wachtwoord in:", type="password", key=f"beh_pw_{_spel_param}")
+        if ADMIN_PASSWORD and _beh_pw == ADMIN_PASSWORD:
+            st.success("Wachtwoord correct.")
+            _etappes_df = read_sheet("etappes_rondes")
+            if _etappes_df.empty:
+                st.warning("Geen gegevens gevonden in de 'etappes_rondes' sheet.")
+            else:
+                # Normalize column names
+                _etappes_df.columns = [c.strip().lower() for c in _etappes_df.columns]
+                # Filter to this spel if a 'spel' column exists
+                if 'spel' in _etappes_df.columns:
+                    _etappes_df = _etappes_df[_etappes_df['spel'].str.strip().str.lower() == _spel_param]
+
+                st.subheader("📋 Etappes")
+                st.dataframe(_etappes_df, use_container_width=True)
+
+                # Etappe selectie
+                _etappe_keuzes = _etappes_df['etappe'].dropna().tolist() if 'etappe' in _etappes_df.columns else []
+                if not _etappe_keuzes:
+                    st.info("Geen etappes beschikbaar.")
+                else:
+                    _gekozen_etappe = st.selectbox("Kies etappe:", _etappe_keuzes, key=f"etappe_sel_{_spel_param}")
+                    _etappe_row = _etappes_df[_etappes_df['etappe'].astype(str) == str(_gekozen_etappe)].iloc[0]
+
+                    _URL_TYPES = [
+                        ("url_etappe", "🏁 Etappe"),
+                        ("url_gc",     "🏆 GC"),
+                        ("url_points", "💚 Punten"),
+                        ("url_kom",    "🔴 KOM"),
+                        ("url_youth",  "⬜ Jongeren"),
+                    ]
+
+                    st.subheader(f"Etappe {_gekozen_etappe} – URLs")
+                    _available = [(key, label, str(_etappe_row.get(key, "")).strip())
+                                  for key, label in _URL_TYPES
+                                  if key in _etappe_row.index and str(_etappe_row.get(key, "")).strip()]
+
+                    if not _available:
+                        st.info("Geen URLs geconfigureerd voor deze etappe.")
+                    else:
+                        for _url_key, _url_label, _url_val in _available:
+                            st.markdown(f"**{_url_label}**: `{_url_val}`")
+
+                        st.divider()
+
+                        # Individual scrape buttons
+                        for _url_key, _url_label, _url_val in _available:
+                            _type_key = _url_key.replace("url_", "")
+                            if st.button(f"Scrape {_url_label}", key=f"scrape_{_spel_param}_{_gekozen_etappe}_{_url_key}"):
+                                with st.spinner(f"Scrapen van {_url_label}..."):
+                                    _ok, _result = scrape_pcs_resultaat(_url_val)
+                                if _ok:
+                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _type_key, _result)
+                                    if _sv_ok:
+                                        st.success(f"✅ {_url_label}: {_sv_msg}")
+                                    else:
+                                        st.error(f"Opslaan mislukt: {_sv_msg}")
+                                else:
+                                    st.error(f"Scrapen mislukt: {_result}")
+
+                        st.divider()
+                        # Scrape all button
+                        if st.button(f"🔄 Scrape alle URLs (etappe {_gekozen_etappe})", key=f"scrape_all_{_spel_param}_{_gekozen_etappe}"):
+                            _all_ok = True
+                            for _url_key, _url_label, _url_val in _available:
+                                _type_key = _url_key.replace("url_", "")
+                                with st.spinner(f"Scrapen van {_url_label}..."):
+                                    _ok, _result = scrape_pcs_resultaat(_url_val)
+                                if _ok:
+                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _type_key, _result)
+                                    if _sv_ok:
+                                        st.success(f"✅ {_url_label}: {_sv_msg}")
+                                    else:
+                                        st.error(f"❌ {_url_label} opslaan mislukt: {_sv_msg}")
+                                        _all_ok = False
+                                else:
+                                    st.error(f"❌ {_url_label} scrapen mislukt: {_result}")
+                                    _all_ok = False
+                            if _all_ok:
+                                st.balloons()
+        elif _beh_pw:
+            st.error("Onjuist wachtwoord.")
 
     st.stop()
 
