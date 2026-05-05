@@ -1076,11 +1076,12 @@ def scrape_startlijst_en_save(koers_naam, url):
         return False, f"Startlijst fout: {str(e)}"
 
 
-def scrape_pcs_resultaat(url):
+def scrape_pcs_resultaat(url, limit=None):
     """
     Generieke PCS scraper voor etappe-uitslag, GC, punten, KOM en youth.
     Dezelfde tabel-parsing als scrape_en_save() maar zonder sheet-opslag.
     Geeft (True, list_of_dicts) of (False, foutmelding) terug.
+    limit: max aantal rijen te bewaren (None = alles)
     """
     try:
         resp = _pcs_get(url.rstrip('/') + '/')
@@ -1102,6 +1103,8 @@ def scrape_pcs_resultaat(url):
         data = []
         tbody = table.find('tbody') or table
         for row in tbody.find_all('tr'):
+            if limit and len(data) >= limit:
+                break
             cols = row.find_all('td')
             if len(cols) < 2:
                 continue
@@ -2243,9 +2246,10 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         # Individual scrape buttons
                         for _url_key, _url_label, _url_val in _available:
                             _type_key = _url_key.replace("url_", "")
+                            _sc_limit = None if _type_key == "etappe" else 10
                             if st.button(f"Scrape {_url_label}", key=f"scrape_{_spel_param}_{_gekozen_etappe}_{_url_key}"):
                                 with st.spinner(f"Scrapen van {_url_label}..."):
-                                    _ok, _result = scrape_pcs_resultaat(_url_val)
+                                    _ok, _result = scrape_pcs_resultaat(_url_val, limit=_sc_limit)
                                 if _ok:
                                     _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _type_key, _result)
                                     if _sv_ok:
@@ -2261,8 +2265,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             _all_ok = True
                             for _url_key, _url_label, _url_val in _available:
                                 _type_key = _url_key.replace("url_", "")
+                                _sc_limit = None if _type_key == "etappe" else 10
                                 with st.spinner(f"Scrapen van {_url_label}..."):
-                                    _ok, _result = scrape_pcs_resultaat(_url_val)
+                                    _ok, _result = scrape_pcs_resultaat(_url_val, limit=_sc_limit)
                                 if _ok:
                                     _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _type_key, _result)
                                     if _sv_ok:
