@@ -1166,7 +1166,7 @@ def save_ronde_uitslagen(spel, etappe, type_result, data):
     except Exception as e:
         return False, str(e)
 
- (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ) ---
+# (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ)
 @st.cache_data(ttl=60)
 def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners):
     # Lokale kopieën maken om de originele data niet te beschadigen
@@ -1579,7 +1579,40 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # Vriendelijke categorielabels (voor filter en tabel)
     _CAT_DISPLAY = {"topper": "Max5 topper", "subtopper": "Max5 subtopper", "renner": "Min3 renner", "": "—"}
 
-    tab_ploeg, tab_beheer = st.tabs(["👥 Ploeg Selectie", "⚙️ Beheer"])
+    # ── Data laden voor alle tabbladen ──────────────────────────────────────────
+    _pr_df_all_ronde = pd.DataFrame()
+    try:
+        _ws_pr_all = sh.worksheet("speler_teams_rondes")
+        _pr_all_vals = _ws_pr_all.get_all_values()
+        if len(_pr_all_vals) > 1:
+            _hdrs_all = [str(h).strip().lower() for h in _pr_all_vals[0]]
+            _pr_df_all_ronde = pd.DataFrame(_pr_all_vals[1:], columns=_hdrs_all)
+            _pr_df_all_ronde = _pr_df_all_ronde.loc[:, _pr_df_all_ronde.columns != '']
+            if 'spel' in _pr_df_all_ronde.columns:
+                _pr_df_all_ronde = _pr_df_all_ronde[_pr_df_all_ronde['spel'] == _spel_param]
+    except Exception:
+        pass
+
+    _uit_ronde = read_sheet("uitslagen_rondes")
+    if not _uit_ronde.empty:
+        _ronde_fc = next((c for c in ['ronde', 'spel'] if c in _uit_ronde.columns), None)
+        if _ronde_fc:
+            _uit_ronde = _uit_ronde[_uit_ronde[_ronde_fc].str.strip().str.lower() == _spel_param]
+
+    _keuzes_ronde = read_sheet("keuzes_rondes")
+    if not _keuzes_ronde.empty and 'ronde' in _keuzes_ronde.columns:
+        _keuzes_ronde = _keuzes_ronde[_keuzes_ronde['ronde'].str.strip().str.lower() == _spel_param]
+
+    _etappes_ronde = read_sheet("etappes_rondes")
+    if not _etappes_ronde.empty:
+        _etappes_ronde.columns = [c.strip().lower() for c in _etappes_ronde.columns]
+        _ec_ronde = next((c for c in ['ronde', 'spel'] if c in _etappes_ronde.columns), None)
+        if _ec_ronde:
+            _etappes_ronde = _etappes_ronde[_etappes_ronde[_ec_ronde].str.strip().str.lower() == _spel_param]
+
+    tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
+        ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
+    )
     with tab_ploeg:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Ploeg Selectie</h1>', unsafe_allow_html=True)
 
@@ -1755,6 +1788,387 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         st.success(f"✅ Ploeg opgeslagen voor {_naam}! ({len(gekozen_r)} renners)")
                     except Exception as _e:
                         st.error(f"Fout bij opslaan: {_e}")
+
+    # =============================================
+    # KLASSEMENT
+    # =============================================
+    with tab_klassement:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
+        st.info("ℹ️ Puntentelling wordt later toegevoegd. Hieronder zie je een overzicht van alle deelnemers en hun team.")
+        if _pr_df_all_ronde.empty:
+            st.warning("Nog geen ploegen opgeslagen voor dit spel.")
+        else:
+            _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
+            _klas_data = []
+            for _sp_kl in _spelers_kl:
+                _sp_rows_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]
+                _klas_data.append({"Deelnemer": _sp_kl, "Renners geselecteerd": len(_sp_rows_kl), "Punten": "—"})
+            _df_klas = pd.DataFrame(_klas_data)
+            st.dataframe(_df_klas, hide_index=True, use_container_width=True,
+                         height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT)
+
+    # =============================================
+    # UITSLAGEN
+    # =============================================
+    with tab_uitslagen:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Uitslagen</h1>', unsafe_allow_html=True)
+        if _uit_ronde.empty:
+            st.info("Nog geen uitslagen beschikbaar. Scrape ze via het ⚙️ Beheer tabblad.")
+        else:
+            _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
+            _etappe_opties_u = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+            _ges_etappe_u = st.selectbox("Selecteer etappe:", _etappe_opties_u, key=f"uit_et_{_spel_param}")
+            _uit_et_u = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_ges_etappe_u)]
+            _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth"] if t in _uit_et_u['type_result'].values]
+            if not _type_opties_u:
+                st.info("Geen resultaten beschikbaar voor deze etappe.")
+            else:
+                _ges_type_u = st.selectbox("Resultaat type:", _type_opties_u,
+                                            format_func=lambda x: _TYPE_LABELS_U.get(x, x),
+                                            key=f"uit_type_{_spel_param}")
+                _uit_show_u = _uit_et_u[_uit_et_u['type_result'] == _ges_type_u].copy()
+                _uit_show_u['_sort'] = pd.to_numeric(_uit_show_u['rank'], errors='coerce').fillna(999)
+
+                col_u1, col_u2 = st.columns([2, 1])
+                with col_u1:
+                    st.subheader(f"Etappe {_ges_etappe_u} – {_TYPE_LABELS_U.get(_ges_type_u, _ges_type_u)}")
+                    _disp_u = _uit_show_u.sort_values('_sort').head(50)
+                    _disp_cols_u = [c for c in ['rank', 'rider', 'team'] if c in _disp_u.columns]
+                    st.dataframe(_disp_u[_disp_cols_u], hide_index=True, use_container_width=True)
+                with col_u2:
+                    st.subheader("Jouw renners")
+                    if _saved_r:
+                        _mijn_u = _uit_show_u[_uit_show_u['rider'].isin(_saved_r)].sort_values('_sort')
+                        if _mijn_u.empty:
+                            st.info("Geen van jouw renners in deze uitslag.")
+                        else:
+                            st.dataframe(_mijn_u[_disp_cols_u], hide_index=True, use_container_width=True)
+                    else:
+                        st.info("Nog geen ploeg opgeslagen.")
+
+    # =============================================
+    # MATRIX
+    # =============================================
+    with tab_matrix:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Punten Matrix</h1>', unsafe_allow_html=True)
+        if _pr_df_all_ronde.empty:
+            st.info("Nog geen ploegen opgeslagen.")
+        elif _uit_ronde.empty:
+            st.info("Nog geen uitslagen beschikbaar.")
+        else:
+            _TYPE_LABELS_M = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
+            _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
+            _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
+            _speler_mx = st.selectbox("Selecteer deelnemer:", _spelers_mx, index=_def_mx, key=f"mx_sp_{_spel_param}")
+            _ges_type_mx = st.selectbox("Resultaat type:", ["etappe", "gc", "points", "kom", "youth"],
+                                         format_func=lambda x: _TYPE_LABELS_M.get(x, x),
+                                         key=f"mx_type_{_spel_param}")
+
+            _mijn_r_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]['renner_naam'].tolist()
+            _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+            _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
+
+            _matrix_r = []
+            for _rn_mx in sorted(_mijn_r_mx):
+                _rij_mx = {"Renner": _rn_mx}
+                for _et_mx in _etappes_mx:
+                    _et_r_mx = _uit_type_mx[_uit_type_mx['etappe'].astype(str) == str(_et_mx)]
+                    _r_row_mx = _et_r_mx[_et_r_mx['rider'] == _rn_mx]
+                    _rij_mx[f"E{_et_mx}"] = _r_row_mx.iloc[0]['rank'] if not _r_row_mx.empty else "—"
+                _matrix_r.append(_rij_mx)
+
+            if _matrix_r:
+                _df_mx = pd.DataFrame(_matrix_r).set_index("Renner")
+                st.dataframe(_df_mx, use_container_width=True,
+                             height=TABLE_HEADER_HEIGHT + len(_df_mx) * TABLE_ROW_HEIGHT)
+            else:
+                st.info("Geen renners gevonden.")
+
+    # =============================================
+    # MIJN TEAM
+    # =============================================
+    with tab_team:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Mijn Team</h1>', unsafe_allow_html=True)
+        if _pr_df_all_ronde.empty:
+            st.info("Nog geen ploegen opgeslagen voor dit spel.")
+        else:
+            _spelers_tm = sorted(_pr_df_all_ronde['speler_naam'].unique())
+            _def_tm = _spelers_tm.index(ingelogd_speler) if ingelogd_speler in _spelers_tm else 0
+            _speler_tm = st.selectbox("Deelnemer:", _spelers_tm, index=_def_tm, key=f"tm_sp_{_spel_param}")
+            _sp_renners_tm = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_tm]['renner_naam'].tolist()
+            if not _sp_renners_tm:
+                st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
+            else:
+                _team_rows_tm = []
+                for _rn_tm in sorted(_sp_renners_tm):
+                    _info_tm = _r_race[_r_race['renner'] == _rn_tm]
+                    if not _info_tm.empty:
+                        _ri_tm = _info_tm.iloc[0]
+                        _team_rows_tm.append({
+                            "Renner": _rn_tm,
+                            "Categorie": _CAT_DISPLAY.get(str(_ri_tm.get('_cat', '')), str(_ri_tm.get('_cat', ''))),
+                            "Ploeg": _ri_tm.get('team', ''),
+                            "Land": _ri_tm.get('land', ''),
+                            "Punten": "—",
+                        })
+                    else:
+                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": "—"})
+                _df_tm = pd.DataFrame(_team_rows_tm)
+                st.dataframe(_df_tm, hide_index=True, use_container_width=True,
+                             height=TABLE_HEADER_HEIGHT + len(_df_tm) * TABLE_ROW_HEIGHT)
+                st.caption(f"Totaal: {len(_sp_renners_tm)} renners · Puntentelling volgt later.")
+
+    # =============================================
+    # WISSELS
+    # =============================================
+    with tab_wissels:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Wissels</h1>', unsafe_allow_html=True)
+        _MAX_WISSELS_R = 5
+        if _pr_df_all_ronde.empty or _r_race.empty:
+            st.info("Data niet beschikbaar.")
+        else:
+            _naam_w = ingelogd_speler
+            _sp_rows_w = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_w].copy()
+            if _sp_rows_w.empty:
+                st.info(f"Je hebt nog geen ploeg opgeslagen voor {_naam}.")
+            else:
+                _nu_w = datetime.now(_AMS)
+                _today_w = pd.to_datetime(_nu_w.date())
+                if 'tot_datum' in _sp_rows_w.columns and 'vanaf_datum' in _sp_rows_w.columns:
+                    _mask_act_w = (
+                        (pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce') <= _today_w) &
+                        (_sp_rows_w['tot_datum'].isna() | (_sp_rows_w['tot_datum'] == "") |
+                         (pd.to_datetime(_sp_rows_w['tot_datum'], errors='coerce') > _today_w))
+                    )
+                    _actief_w = _sp_rows_w[_mask_act_w]['renner_naam'].tolist()
+                    _wissels_gebruikt_w = int((_sp_rows_w['tot_datum'].notna() & (_sp_rows_w['tot_datum'] != "")).sum())
+                else:
+                    _actief_w = _sp_rows_w['renner_naam'].tolist()
+                    _wissels_gebruikt_w = 0
+                _wissels_over_w = _MAX_WISSELS_R - _wissels_gebruikt_w
+
+                st.subheader(f"Huidig team — {len(_actief_w)} renners")
+                st.metric("Wissels over", f"{_wissels_over_w} / {_MAX_WISSELS_R}")
+                _team_info_w = []
+                for _rn_w in sorted(_actief_w):
+                    _rn_info_w = _r_race[_r_race['renner'] == _rn_w]
+                    if not _rn_info_w.empty:
+                        _ri_w = _rn_info_w.iloc[0]
+                        _team_info_w.append({"Renner": _rn_w, "Ploeg": _ri_w.get('team', ''),
+                                              "Land": _ri_w.get('land', ''),
+                                              "Categorie": _CAT_DISPLAY.get(str(_ri_w.get('_cat', '')), str(_ri_w.get('_cat', '')))})
+                    else:
+                        _team_info_w.append({"Renner": _rn_w, "Ploeg": "", "Land": "", "Categorie": ""})
+                _df_team_w = pd.DataFrame(_team_info_w)
+                st.dataframe(_df_team_w, hide_index=True, use_container_width=True,
+                             height=TABLE_HEADER_HEIGHT + len(_df_team_w) * TABLE_ROW_HEIGHT)
+
+                st.divider()
+                if _wissels_over_w <= 0:
+                    st.warning(f"Je hebt alle {_MAX_WISSELS_R} wissels al gebruikt.")
+                else:
+                    st.subheader("Wissel doorvoeren")
+                    _actief_set_w = set(_actief_w)
+                    _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist() if r not in _actief_set_w])
+                    _n_w = st.number_input("Hoeveel wissels?", min_value=1,
+                                           max_value=min(_wissels_over_w, len(_actief_w)), value=1, step=1,
+                                           key=f"n_wissels_{_spel_param}")
+                    _uit_keuzes_w, _in_keuzes_w = [], []
+                    for _i_w in range(int(_n_w)):
+                        st.markdown(f"**Wissel {_i_w + 1}**")
+                        _cw1, _cw2 = st.columns(2)
+                        with _cw1:
+                            _uit_w = st.selectbox("Eruit:", [r for r in _actief_w if r not in _uit_keuzes_w],
+                                                   key=f"wuit_{_spel_param}_{_i_w}")
+                            _uit_keuzes_w.append(_uit_w)
+                        with _cw2:
+                            _in_w = st.selectbox("Erin:", [r for r in _beschikbaar_w if r not in _in_keuzes_w],
+                                                  key=f"win_{_spel_param}_{_i_w}")
+                            _in_keuzes_w.append(_in_w)
+
+                    if st.button("✅ Bevestig wissels", key=f"wissel_btn_{_spel_param}"):
+                        try:
+                            _ws_pr_w2 = sh.worksheet("speler_teams_rondes")
+                            _pr_w2_vals = _ws_pr_w2.get_all_values()
+                            _pr_w2_hdrs = [str(h).strip().lower() for h in _pr_w2_vals[0]]
+                            _pr_w2_df = pd.DataFrame(_pr_w2_vals[1:], columns=_pr_w2_hdrs) if len(_pr_w2_vals) > 1 else pd.DataFrame(columns=_pr_w2_hdrs)
+                            _pr_w2_df = _pr_w2_df.loc[:, _pr_w2_df.columns != '']
+                            _datum_w2 = _today_w.strftime("%Y-%m-%d")
+                            _mask_sp_w2 = (_pr_w2_df['speler_naam'] == _naam_w) & (_pr_w2_df['spel'] == _spel_param)
+                            for _r_uit_w in _uit_keuzes_w:
+                                _idx_w = _pr_w2_df[
+                                    _mask_sp_w2 & (_pr_w2_df['renner_naam'] == _r_uit_w) &
+                                    ((_pr_w2_df['tot_datum'] == "") | _pr_w2_df['tot_datum'].isna())
+                                ].index
+                                _pr_w2_df.loc[_idx_w, 'tot_datum'] = _datum_w2
+                            _cols_wr = ['speler_naam', 'spel', 'renner_naam', 'vanaf_datum', 'tot_datum']
+                            for _r_in_w in _in_keuzes_w:
+                                _new_wr = pd.DataFrame([{"speler_naam": _naam_w, "spel": _spel_param,
+                                                          "renner_naam": _r_in_w, "vanaf_datum": _datum_w2, "tot_datum": ""}])
+                                _pr_w2_df = pd.concat([_pr_w2_df, _new_wr], ignore_index=True)
+                            for _c_wr in _cols_wr:
+                                if _c_wr not in _pr_w2_df.columns:
+                                    _pr_w2_df[_c_wr] = ""
+                            _ws_pr_w2.clear()
+                            _ws_pr_w2.update([_cols_wr] + _pr_w2_df[_cols_wr].fillna("").values.tolist())
+                            st.cache_data.clear()
+                            st.success(f"Wissels opgeslagen! {', '.join(_uit_keuzes_w)} → {', '.join(_in_keuzes_w)}")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as _ew:
+                            st.error(f"Fout bij opslaan: {_ew}")
+
+    # =============================================
+    # CAPTAINS
+    # =============================================
+    with tab_captains:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Captains</h1>', unsafe_allow_html=True)
+        if _pr_df_all_ronde.empty:
+            st.info("Nog geen ploegen opgeslagen voor dit spel.")
+        elif _etappes_ronde.empty:
+            st.info("Geen etappes geconfigureerd voor dit spel. Voeg etappes toe via de etappes_rondes sheet.")
+        else:
+            _nu_cap = datetime.now(_AMS)
+            _spelers_cap = sorted(_pr_df_all_ronde['speler_naam'].unique())
+
+            # Bouw deadline dict per etappe
+            _et_deadlines = {}
+            if 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
+                for _, _erow in _etappes_ronde.iterrows():
+                    _dl_str = str(_erow.get('deadline', '')).strip()
+                    _dl_dt = None
+                    if _dl_str:
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                            try:
+                                _dl_dt = datetime.strptime(_dl_str, _fmt).replace(tzinfo=_AMS)
+                                break
+                            except ValueError:
+                                pass
+                    _et_deadlines[str(_erow['etappe'])] = _dl_dt
+
+            # Overzicht captains (tabel)
+            st.subheader("📋 Overzicht Captains")
+            _gestart_et = [e for e, d in _et_deadlines.items() if d and d <= _nu_cap]
+            _toekomst_et = [e for e, d in _et_deadlines.items() if not d or d > _nu_cap]
+            _laatste_g_et = _gestart_et[-1] if _gestart_et else None
+            _toon_et = ([_laatste_g_et] if _laatste_g_et else []) + _toekomst_et
+
+            if _toon_et:
+                _th_s = "padding:6px 10px;background:#1a2e4a;color:white;font-size:12px;text-align:center;white-space:nowrap;"
+                _td_sp_s = "padding:6px 10px;font-size:13px;font-weight:600;white-space:nowrap;background:white;border-bottom:1px solid #e2e8f0;"
+                _td_b_s = "padding:6px 10px;font-size:13px;text-align:center;background:white;border-bottom:1px solid #e2e8f0;"
+                _ov_html = f'<table style="width:100%;border-collapse:collapse;"><thead><tr><th style="{_th_s}text-align:left;">Speler</th>'
+                for _et_c in _toon_et:
+                    _ov_html += f'<th style="{_th_s}">Et.{_et_c}</th>'
+                _ov_html += "</tr></thead><tbody>"
+                for _sp_c in _spelers_cap:
+                    _ov_html += f'<tr><td style="{_td_sp_s}">{_sp_c}</td>'
+                    for _et_c in _toon_et:
+                        _keuze_c = (
+                            _keuzes_ronde[(_keuzes_ronde['speler_naam'] == _sp_c) & (_keuzes_ronde['etappe'].astype(str) == str(_et_c))]
+                            if not _keuzes_ronde.empty and 'etappe' in _keuzes_ronde.columns
+                            else pd.DataFrame()
+                        )
+                        _heeft_c = not _keuze_c.empty and str(_keuze_c.iloc[0].get('captain_1', '')).strip() != ""
+                        _dl_c = _et_deadlines.get(str(_et_c))
+                        if _dl_c and _dl_c <= _nu_cap:
+                            if _heeft_c:
+                                _rc = _keuze_c.iloc[0]
+                                _cel = f"{_rc.get('captain_1','')} · {_rc.get('captain_2','')} · {_rc.get('captain_3','')}"
+                            else:
+                                _cel = "—"
+                            _ov_html += f'<td style="{_td_b_s}">{_cel}</td>'
+                        else:
+                            _icon_c = '<span style="color:green;font-weight:bold;">✓</span>' if _heeft_c else '<span style="color:red;font-weight:bold;">✗</span>'
+                            _ov_html += f'<td style="{_td_b_s}">{_icon_c}</td>'
+                    _ov_html += "</tr>"
+                _ov_html += "</tbody></table>"
+                st.markdown(_ov_html, unsafe_allow_html=True)
+
+            st.divider()
+            st.subheader("📝 Captains Instellen")
+            if 'etappe' not in _etappes_ronde.columns:
+                st.info("Geen etappenummers gevonden in de etappes_rondes sheet.")
+            else:
+                _et_opties_cap = _etappes_ronde['etappe'].tolist()
+                _et_cap = st.selectbox("Voor welke etappe?", _et_opties_cap, key=f"cap_et_{_spel_param}")
+                _et_row_cap = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_cap)]
+                _deadline_cap_str = str(_et_row_cap.iloc[0].get('deadline', '')).strip() if not _et_row_cap.empty else ""
+                _deadline_cap_dt = _et_deadlines.get(str(_et_cap))
+
+                _naam_cap = ingelogd_speler
+                _huid_cap = (
+                    _keuzes_ronde[(_keuzes_ronde['speler_naam'] == _naam_cap) & (_keuzes_ronde['etappe'].astype(str) == str(_et_cap))]
+                    if not _keuzes_ronde.empty and 'etappe' in _keuzes_ronde.columns
+                    else pd.DataFrame()
+                )
+                if not _huid_cap.empty:
+                    _rc_h = _huid_cap.iloc[0]
+                    st.info(f"Huidige keuze: 1. {_rc_h.get('captain_1','')}, 2. {_rc_h.get('captain_2','')}, 3. {_rc_h.get('captain_3','')}")
+
+                _is_gestart_cap = bool(_deadline_cap_dt and datetime.now(_AMS) >= _deadline_cap_dt)
+                if _is_gestart_cap:
+                    st.warning(f"⚠️ De deadline voor etappe {_et_cap} is verstreken ({_deadline_cap_str}). Captains kunnen niet meer worden gewijzigd.")
+                else:
+                    if _deadline_cap_str:
+                        st.caption(f"Deadline: {_deadline_cap_str}")
+                    _mr_cap = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_cap]['renner_naam'].tolist()
+                    if not _mr_cap:
+                        st.info("Je hebt nog geen ploeg opgeslagen. Ga naar het Ploeg tabblad.")
+                    else:
+                        def _verrijk_cap(renner):
+                            if '_starter' in _r_race.columns:
+                                _rs = _r_race[_r_race['renner'] == renner]
+                                if not _rs.empty:
+                                    return f"✅ {renner}" if _rs.iloc[0]['_starter'] else f"○ {renner}"
+                            return renner
+                        _mr_cap_v = [_verrijk_cap(r) for r in sorted(_mr_cap)]
+                        _mr_cap_sorted = sorted(_mr_cap_v, key=lambda x: (0 if x.startswith("✅") else 1, x))
+                        st.caption("✅ = bevestigd op startlijst   ○ = niet bevestigd")
+                        _c1_v = st.selectbox("Kies Captain 1 (3.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
+                        _c2_v = st.selectbox("Kies Captain 2 (2.5×):", [r for r in _mr_cap_sorted if r != _c1_v], key=f"cap2_{_spel_param}_{_et_cap}")
+                        _c3_v = st.selectbox("Kies Captain 3 (2.0×):", [r for r in _mr_cap_sorted if r not in [_c1_v, _c2_v]], key=f"cap3_{_spel_param}_{_et_cap}")
+
+                        def _strip_cap(s):
+                            return s.replace("✅ ", "").replace("○ ", "")
+
+                        if st.button("Captains Opslaan", key=f"cap_save_{_spel_param}_{_et_cap}"):
+                            _c1_s, _c2_s, _c3_s = _strip_cap(_c1_v), _strip_cap(_c2_v), _strip_cap(_c3_v)
+                            _new_cap = pd.DataFrame([{
+                                "speler_naam": _naam_cap, "ronde": _spel_param, "etappe": str(_et_cap),
+                                "captain_1": _c1_s, "captain_2": _c2_s, "captain_3": _c3_s
+                            }])
+                            try:
+                                try:
+                                    _ws_cap = sh.worksheet("keuzes_rondes")
+                                    _cap_vals = _ws_cap.get_all_values()
+                                    if len(_cap_vals) > 1:
+                                        _cap_hdrs = [str(h).strip().lower() for h in _cap_vals[0]]
+                                        _cap_df = pd.DataFrame(_cap_vals[1:], columns=_cap_hdrs)
+                                    else:
+                                        _cap_df = pd.DataFrame(columns=["speler_naam", "ronde", "etappe", "captain_1", "captain_2", "captain_3"])
+                                except gspread.exceptions.WorksheetNotFound:
+                                    _ws_cap = sh.add_worksheet("keuzes_rondes", rows=2000, cols=6)
+                                    _cap_df = pd.DataFrame(columns=["speler_naam", "ronde", "etappe", "captain_1", "captain_2", "captain_3"])
+                                _cap_hdrs_out = ["speler_naam", "ronde", "etappe", "captain_1", "captain_2", "captain_3"]
+                                for _ch in _cap_hdrs_out:
+                                    if _ch not in _cap_df.columns:
+                                        _cap_df[_ch] = ""
+                                _masker_cap = (
+                                    (_cap_df['speler_naam'] == _naam_cap) &
+                                    (_cap_df['ronde'] == _spel_param) &
+                                    (_cap_df['etappe'].astype(str) == str(_et_cap))
+                                )
+                                _cap_df = _cap_df[~_masker_cap]
+                                _cap_df = pd.concat([_cap_df[_cap_hdrs_out], _new_cap], ignore_index=True)
+                                _ws_cap.clear()
+                                _ws_cap.update([_cap_hdrs_out] + _cap_df.fillna("").values.tolist())
+                                st.cache_data.clear()
+                                st.success(f"Captains opgeslagen voor etappe {_et_cap}!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as _ec_err:
+                                st.error(f"Fout bij opslaan: {_ec_err}")
 
     with tab_beheer:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Beheer</h1>', unsafe_allow_html=True)
