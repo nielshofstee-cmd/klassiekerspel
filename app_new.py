@@ -1557,11 +1557,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
                     options=alle_namen_r,
                     default=standaard_r,
+                    max_selections=MAX_RENNERS_R,
                     key=f"ploeg_{_spel_param}",
                 )
                 # Converteer weergavenamen terug naar echte namen
                 gekozen_r = [_disp2naam.get(d, d.replace(' ✅', '').strip()) for d in _gekozen_disp]
-                _pct = int(len(gekozen_r) / MAX_RENNERS_R * 100)
+                _pct = min(100, int(len(gekozen_r) / MAX_RENNERS_R * 100))
                 st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
 
             with col_chk_r:
