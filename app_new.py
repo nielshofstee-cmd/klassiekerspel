@@ -1221,6 +1221,101 @@ def debug_pcs_row_html(url, max_rows=5):
     except Exception as e:
         return False, str(e)
 
+_RONDE_PUNTEN = {
+    "etappe": {1:50, 2:44, 3:40, 4:36, 5:32, 6:30, 7:28, 8:26, 9:24, 10:22,
+               11:20, 12:18, 13:16, 14:14, 15:12, 16:10, 17:8, 18:6, 19:4, 20:2},
+    "gc":     {1:10, 2:8, 3:6, 4:4, 5:2},
+    "points": {1:8,  2:6, 3:4, 4:2, 5:1},
+    "kom":    {1:8,  2:6, 3:4, 4:2, 5:1},
+    "youth":  {1:6,  2:4, 3:3, 4:2, 5:1},
+}
+
+
+def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None):
+    """
+    Berekent totaalpunten voor een speler over alle etappes en klassementen.
+    mijn_renners : list van rennersnamen
+    uit_df       : uitslagen_rondes DataFrame (al gefilterd op ronde/spel)
+    keuzes_df    : keuzes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
+    speler_naam  : naam van de speler voor captain lookup, optioneel
+    etappes_df   : etappes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
+    Returns (totaal_int, details_list_of_dicts)
+    """
+    if not mijn_renners or uit_df.empty:
+        return 0, []
+
+    # Build etappe type lookup: etappe_str -> 'super'/'normaal'/'itt'/'tt'
+    _et_type_lkp = {}
+    if etappes_df is not None and not etappes_df.empty and 'type' in etappes_df.columns:
+        for _, _er in etappes_df.iterrows():
+            _et_type_lkp[str(_er['etappe'])] = str(_er.get('type', '')).strip().lower()
+
+    # Build captain lookup: etappe_str -> {rider_name: multiplier}
+    _cap_lkp = {}
+    if keuzes_df is not None and not keuzes_df.empty and speler_naam:
+        _sp_k = keuzes_df[keuzes_df['speler_naam'] == speler_naam]
+        for _, _kr in _sp_k.iterrows():
+            _et_k = str(_kr['etappe'])
+            _is_super = 'super' in _et_type_lkp.get(_et_k, '')
+            _caps = {}
+            _c1 = str(_kr.get('captain_1', '')).strip()
+            if _c1:
+                _caps[_c1] = 3.0 if _is_super else 2.0
+            if _is_super:
+                _c2 = str(_kr.get('captain_2', '')).strip()
+                _c3 = str(_kr.get('captain_3', '')).strip()
+                if _c2:
+                    _caps[_c2] = 2.5
+                if _c3:
+                    _caps[_c3] = 2.0
+            _cap_lkp[_et_k] = _caps
+
+    renner_set = set(mijn_renners)
+    totaal = 0
+    details = []
+    for _, row in uit_df.iterrows():
+        rider = row.get('rider', '')
+        if rider not in renner_set:
+            continue
+        type_r = str(row.get('type_result', '')).strip()
+        etappe_str = str(row.get('etappe', ''))
+        multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0)
+
+        # Oranje schildje: flat 20 punten per etappe, ongeacht positie
+        if type_r == "schildjes":
+            base_pnt = 20
+            final_pnt = round(base_pnt * multiplier)
+            totaal += final_pnt
+            details.append({
+                'etappe':     etappe_str,
+                'type':       'schildjes',
+                'renner':     rider,
+                'rank':       row.get('rank', ''),
+                'punten':     final_pnt,
+                'multiplier': multiplier,
+            })
+            continue
+
+        tabel = _RONDE_PUNTEN.get(type_r, {})
+        if not tabel:
+            continue
+        rank_str = str(row.get('rank', '')).strip()
+        if rank_str.isdigit():
+            base_pnt = tabel.get(int(rank_str), 0)
+            if base_pnt > 0:
+                final_pnt = round(base_pnt * multiplier)
+                totaal += final_pnt
+                details.append({
+                    'etappe':     etappe_str,
+                    'type':       type_r,
+                    'renner':     rider,
+                    'rank':       rank_str,
+                    'punten':     final_pnt,
+                    'multiplier': multiplier,
+                })
+    return totaal, details
+
+
 def save_ronde_uitslagen(spel, etappe, type_result, data):
     """Slaat gescrapete resultaten op in de 'uitslagen_rondes' sheet."""
     COLS = ['spel', 'etappe', 'type_result', 'rank', 'rider', 'team']
@@ -1389,6 +1484,113 @@ if st.session_state['ingelogd_speler'] is None and not st.session_state.get('uit
         st.session_state['ingelogd_speler'] = opgeslagen
         st.rerun()
 
+# ── LANDING PAGE: geen login vereist ─────────────────────────────────────────
+_GELDIGE_SPELLEN = {"klassiekerspel", "giro", "tour", "vuelta"}
+_spel_param = st.query_params.get("spel", "").lower().strip()
+
+if _spel_param and _spel_param not in _GELDIGE_SPELLEN:
+    st.query_params.clear()
+    st.rerun()
+
+if _spel_param == "":
+    # Logout afhandelen als er ?logout=1 in de URL staat
+    if st.query_params.get("logout") == "1":
+        try:
+            cookie_manager.delete(_COOKIE_NAME)
+        except Exception:
+            pass
+        st.session_state['ingelogd_speler'] = None
+        st.session_state['uitgelogd'] = True
+        st.query_params.clear()
+        st.rerun()
+
+    _li_early = st.session_state.get('ingelogd_speler')
+    if _li_early:
+        _creds_src_e = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
+        _row_e = _creds_src_e[_creds_src_e['speler_naam'] == _li_early]
+        _email_e = _row_e['email'].iloc[0] if not _row_e.empty and 'email' in _row_e.columns else ""
+        _nav_l = (
+            f'<div class="nav-container"><div class="nav-header">'
+            f'<div style="display:flex;align-items:center;">'
+            f'<a href="/" style="text-decoration:none;"><span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span></a>'
+            f'</div>'
+            f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">'
+            f'<span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {_li_early}</span>'
+            f'<span style="font-size:10px;color:rgba(255,255,255,0.45);">{_email_e}</span>'
+            f'<form action="" method="get" style="margin:0;padding:0;">'
+            f'<input type="hidden" name="logout" value="1">'
+            f'<button type="submit" style="background:transparent;border:none;color:rgba(255,120,80,0.85);cursor:pointer;font-size:10px;padding:0;margin-top:1px;">🚪 uitloggen</button>'
+            f'</form>'
+            f'</div></div></div>'
+        )
+    else:
+        _nav_l = (
+            f'<div class="nav-container"><div class="nav-header">'
+            f'<div style="display:flex;align-items:center;">'
+            f'<span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span>'
+            f'</div></div></div>'
+        )
+    st.markdown(_nav_l, unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    .spel-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+        margin: 48px 0 32px 0;
+    }
+    @media (max-width: 900px) { .spel-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .spel-grid { grid-template-columns: 1fr; } }
+    .spel-card {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: white; border-radius: 20px; padding: 40px 24px 36px 24px;
+        text-decoration: none; color: #0d1f35;
+        box-shadow: 0 4px 24px rgba(13,31,53,0.10); border: 1.5px solid #d8e0eb;
+        transition: box-shadow 0.2s ease, transform 0.18s ease, border-color 0.18s ease;
+        min-height: 220px; cursor: pointer;
+    }
+    .spel-card:hover { box-shadow: 0 12px 40px rgba(13,31,53,0.18); transform: translateY(-4px); border-color: #f47c20; text-decoration: none; }
+    .spel-card-icon { font-size: 52px; line-height: 1; margin-bottom: 18px; }
+    .spel-card-title { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: #0d1f35; margin-bottom: 6px; line-height: 1; }
+    .spel-card-sub { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; color: #8a9ab5; text-transform: uppercase; letter-spacing: 1.5px; }
+    .spel-card-badge { margin-top: 14px; background: #f47c20; color: white; font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase; }
+    .spel-card-soon { margin-top: 14px; background: #eef1f6; color: #8a9ab5; font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase; }
+    .landing-title { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #0d1f35; letter-spacing: 2px; margin-bottom: 4px; }
+    .landing-sub { font-family: 'DM Sans', sans-serif; font-size: 15px; color: #5a6a82; margin-bottom: 0; }
+    </style>
+    <div style="margin-top:32px;">
+        <div class="landing-title">Kies een spel</div>
+        <div class="landing-sub">Selecteer een van de vier wielerspellen om door te gaan.</div>
+    </div>
+    <div class="spel-grid">
+        <a href="?spel=klassiekerspel" class="spel-card">
+            <div class="spel-card-icon">🚴</div>
+            <div class="spel-card-title">Klassiekerspel</div>
+            <div class="spel-card-sub">Voorjaarswedstrijden 2026</div>
+            <div class="spel-card-badge">Actief</div>
+        </a>
+        <a href="?spel=giro" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/it.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Giro d'Italia</div>
+            <div class="spel-card-sub">Grote ronde · Mei 2026</div>
+            <div class="spel-card-badge">Actief</div>
+        </a>
+        <a href="?spel=tour" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/fr.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Tour de France</div>
+            <div class="spel-card-sub">Grote ronde · Juli 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+        <a href="?spel=vuelta" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/es.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Vuelta a España</div>
+            <div class="spel-card-sub">Grote ronde · Augustus 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
 if st.session_state['ingelogd_speler'] is None:
     st.subheader("🔐 Inloggen")
     _login_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
@@ -1468,19 +1670,9 @@ _nav_html = (
 )
 st.markdown(_nav_html, unsafe_allow_html=True)
 
-# =============================================
-# ROUTING OP BASIS VAN ?spel= QUERY PARAM
-# =============================================
-_GELDIGE_SPELLEN = {"klassiekerspel", "giro", "tour", "vuelta"}
-_spel_param = st.query_params.get("spel", "").lower().strip()
-
-# Onbekende waarde → redirect naar home
-if _spel_param and _spel_param not in _GELDIGE_SPELLEN:
-    st.query_params.clear()
-    st.rerun()
-
-# ── LANDING PAGE (geen ?spel= param) ─────────────────────────────────────────
-if _spel_param == "":
+# ── _spel_param al bepaald boven de login-check ──────────────────────────────
+# (landing page en routing worden afgehandeld vóór de login)
+if False:
     st.markdown("""
     <style>
     .spel-grid {
@@ -1705,6 +1897,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _ec_ronde:
             _etappes_ronde = _etappes_ronde[_etappes_ronde[_ec_ronde].str.strip().str.lower() == _spel_param]
 
+    # Deadline etappe 1 → teams van anderen pas zichtbaar na deze tijd
+    _et1_deadline = None
+    if not _etappes_ronde.empty and 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
+        _et1_row = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == "1"]
+        if not _et1_row.empty:
+            _dl1_str = str(_et1_row.iloc[0].get('deadline', '')).strip()
+            for _fmt1 in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    _et1_deadline = datetime.strptime(_dl1_str, _fmt1).replace(tzinfo=_AMS)
+                    break
+                except ValueError:
+                    pass
+    _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
+
     tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
         ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
     )
@@ -1889,18 +2095,26 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # =============================================
     with tab_klassement:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
-        st.info("ℹ️ Puntentelling wordt later toegevoegd. Hieronder zie je een overzicht van alle deelnemers en hun team.")
         if _pr_df_all_ronde.empty:
             st.warning("Nog geen ploegen opgeslagen voor dit spel.")
         else:
             _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
             _klas_data = []
-            for _sp_kl in _spelers_kl:
-                _sp_rows_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]
-                _klas_data.append({"Deelnemer": _sp_kl, "Renners geselecteerd": len(_sp_rows_kl), "Punten": "—"})
-            _df_klas = pd.DataFrame(_klas_data)
-            st.dataframe(_df_klas, hide_index=True, use_container_width=True,
-                         height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT)
+            with st.spinner("Klassement berekenen..."):
+                for _sp_kl in _spelers_kl:
+                    _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
+                    _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
+                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl})
+            _df_klas = (pd.DataFrame(_klas_data)
+                        .sort_values("Punten", ascending=False)
+                        .reset_index(drop=True))
+            _df_klas.index += 1
+            st.dataframe(
+                _df_klas,
+                column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                use_container_width=True,
+                height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT,
+            )
 
     # =============================================
     # UITSLAGEN
@@ -1952,28 +2166,78 @@ if _spel_param in ("giro", "tour", "vuelta"):
             st.info("Nog geen uitslagen beschikbaar.")
         else:
             _TYPE_LABELS_M = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
-            _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
-            _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
-            _speler_mx = st.selectbox("Selecteer deelnemer:", _spelers_mx, index=_def_mx, key=f"mx_sp_{_spel_param}")
+
+            if _giro_gestart:
+                _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
+                _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
+                _speler_mx = st.selectbox("Selecteer deelnemer:", _spelers_mx, index=_def_mx, key=f"mx_sp_{_spel_param}")
+            else:
+                _speler_mx = ingelogd_speler
+                if _et1_deadline:
+                    st.info(f"🔒 Teams van andere deelnemers zijn zichtbaar na de start van de {_naam} ({_et1_deadline.strftime('%d-%m-%Y %H:%M')}).")
+
             _ges_type_mx = st.selectbox("Resultaat type:", ["etappe", "gc", "points", "kom", "youth"],
                                          format_func=lambda x: _TYPE_LABELS_M.get(x, x),
                                          key=f"mx_type_{_spel_param}")
 
+            _weergave_mx = st.radio("Weergave:", ["Punten", "Positie"], horizontal=True, key=f"mx_view_{_spel_param}")
+
             _mijn_r_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]['renner_naam'].tolist()
             _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
             _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
+            _tabel_mx = _RONDE_PUNTEN.get(_ges_type_mx, {})
+
+            # Build etappe type and captain multiplier lookups for matrix
+            _et_type_mx = {}
+            if not _etappes_ronde.empty and 'type' in _etappes_ronde.columns:
+                for _, _emx in _etappes_ronde.iterrows():
+                    _et_type_mx[str(_emx['etappe'])] = str(_emx.get('type', '')).strip().lower()
+            _cap_mx = {}
+            if not _keuzes_ronde.empty and 'etappe' in _keuzes_ronde.columns:
+                _sp_km = _keuzes_ronde[_keuzes_ronde['speler_naam'] == _speler_mx]
+                for _, _kmx in _sp_km.iterrows():
+                    _etk = str(_kmx['etappe'])
+                    _is_sup = 'super' in _et_type_mx.get(_etk, '')
+                    _cm = {}
+                    _ck1 = str(_kmx.get('captain_1', '')).strip()
+                    if _ck1:
+                        _cm[_ck1] = 3.0 if _is_sup else 2.0
+                    if _is_sup:
+                        _ck2 = str(_kmx.get('captain_2', '')).strip()
+                        _ck3 = str(_kmx.get('captain_3', '')).strip()
+                        if _ck2:
+                            _cm[_ck2] = 2.5
+                        if _ck3:
+                            _cm[_ck3] = 2.0
+                    _cap_mx[_etk] = _cm
 
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
                 _rij_mx = {"Renner": _rn_mx}
+                _totaal_mx = 0
                 for _et_mx in _etappes_mx:
                     _et_r_mx = _uit_type_mx[_uit_type_mx['etappe'].astype(str) == str(_et_mx)]
                     _r_row_mx = _et_r_mx[_et_r_mx['rider'] == _rn_mx]
-                    _rij_mx[f"E{_et_mx}"] = _r_row_mx.iloc[0]['rank'] if not _r_row_mx.empty else "—"
+                    if not _r_row_mx.empty:
+                        _rank_mx = _r_row_mx.iloc[0]['rank']
+                        if _weergave_mx == "Punten":
+                            _base_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
+                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0)
+                            _pnt_mx = round(_base_mx * _mul_mx)
+                            _rij_mx[f"E{_et_mx}"] = _pnt_mx
+                            _totaal_mx += _pnt_mx
+                        else:
+                            _rij_mx[f"E{_et_mx}"] = _rank_mx
+                    else:
+                        _rij_mx[f"E{_et_mx}"] = 0 if _weergave_mx == "Punten" else "—"
+                if _weergave_mx == "Punten":
+                    _rij_mx["Totaal"] = _totaal_mx
                 _matrix_r.append(_rij_mx)
 
             if _matrix_r:
                 _df_mx = pd.DataFrame(_matrix_r).set_index("Renner")
+                if _weergave_mx == "Punten":
+                    _df_mx = _df_mx.sort_values("Totaal", ascending=False)
                 st.dataframe(_df_mx, use_container_width=True,
                              height=TABLE_HEADER_HEIGHT + len(_df_mx) * TABLE_ROW_HEIGHT)
             else:
@@ -1987,21 +2251,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _pr_df_all_ronde.empty:
             st.info("Nog geen ploegen opgeslagen voor dit spel.")
         else:
-            # Bepaal deadline etappe 1 → na die tijd zijn andere teams zichtbaar
-            _et1_deadline = None
-            if not _etappes_ronde.empty and 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
-                _et1_row = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == "1"]
-                if not _et1_row.empty:
-                    _dl1_str = str(_et1_row.iloc[0].get('deadline', '')).strip()
-                    for _fmt1 in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                        try:
-                            _et1_deadline = datetime.strptime(_dl1_str, _fmt1).replace(tzinfo=_AMS)
-                            break
-                        except ValueError:
-                            pass
-
-            _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
-
             if _giro_gestart:
                 _spelers_tm = sorted(_pr_df_all_ronde['speler_naam'].unique())
                 _def_tm = _spelers_tm.index(ingelogd_speler) if ingelogd_speler in _spelers_tm else 0
@@ -2015,9 +2264,16 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if not _sp_renners_tm:
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
             else:
+                # Bereken punten per renner
+                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde, _keuzes_ronde, _speler_tm, _etappes_ronde)
+                _renner_pnt_tm = {}
+                for _d in _det_tm:
+                    _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
+
                 _team_rows_tm = []
                 for _rn_tm in sorted(_sp_renners_tm):
                     _info_tm = _r_race[_r_race['renner'] == _rn_tm]
+                    _pnt_tm = _renner_pnt_tm.get(_rn_tm, 0)
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
                         _team_rows_tm.append({
@@ -2025,14 +2281,21 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             "Categorie": _CAT_DISPLAY.get(str(_ri_tm.get('_cat', '')), str(_ri_tm.get('_cat', ''))),
                             "Ploeg": _ri_tm.get('team', ''),
                             "Land": _ri_tm.get('land', ''),
-                            "Punten": "—",
+                            "Punten": _pnt_tm,
                         })
                     else:
-                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": "—"})
-                _df_tm = pd.DataFrame(_team_rows_tm)
-                st.dataframe(_df_tm, hide_index=True, use_container_width=True,
-                             height=TABLE_HEADER_HEIGHT + len(_df_tm) * TABLE_ROW_HEIGHT)
-                st.caption(f"Totaal: {len(_sp_renners_tm)} renners · Puntentelling volgt later.")
+                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
+                _df_tm = (pd.DataFrame(_team_rows_tm)
+                          .sort_values("Punten", ascending=False)
+                          .reset_index(drop=True))
+                st.dataframe(
+                    _df_tm,
+                    column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                    hide_index=True,
+                    use_container_width=True,
+                    height=TABLE_HEADER_HEIGHT + len(_df_tm) * TABLE_ROW_HEIGHT,
+                )
+                st.metric("Totaal", f"{_tot_tm} punten", help=f"{len(_sp_renners_tm)} renners")
 
     # =============================================
     # WISSELS
@@ -2187,10 +2450,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         )
                         _heeft_c = not _keuze_c.empty and str(_keuze_c.iloc[0].get('captain_1', '')).strip() != ""
                         _dl_c = _et_deadlines.get(str(_et_c))
+                        _et_type_ov = str(_etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_c)].iloc[0].get('type', '')).strip().lower() if not _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_c)].empty else ""
+                        _is_super_ov = 'super' in _et_type_ov
                         if _dl_c and _dl_c <= _nu_cap:
                             if _heeft_c:
                                 _rc = _keuze_c.iloc[0]
-                                _cel = f"{_rc.get('captain_1','')} · {_rc.get('captain_2','')} · {_rc.get('captain_3','')}"
+                                if _is_super_ov:
+                                    _cel = f"{_rc.get('captain_1','')} · {_rc.get('captain_2','')} · {_rc.get('captain_3','')}"
+                                else:
+                                    _cel = str(_rc.get('captain_1', ''))
                             else:
                                 _cel = "—"
                             _ov_html += f'<td style="{_td_b_s}">{_cel}</td>'
@@ -2211,6 +2479,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _et_row_cap = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_cap)]
                 _deadline_cap_str = str(_et_row_cap.iloc[0].get('deadline', '')).strip() if not _et_row_cap.empty else ""
                 _deadline_cap_dt = _et_deadlines.get(str(_et_cap))
+                _et_type_cap = str(_et_row_cap.iloc[0].get('type', '')).strip().lower() if not _et_row_cap.empty else ""
+                _is_super_cap = 'super' in _et_type_cap
 
                 _naam_cap = ingelogd_speler
                 _huid_cap = (
@@ -2220,14 +2490,18 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
                 if not _huid_cap.empty:
                     _rc_h = _huid_cap.iloc[0]
-                    st.info(f"Huidige keuze: 1. {_rc_h.get('captain_1','')}, 2. {_rc_h.get('captain_2','')}, 3. {_rc_h.get('captain_3','')}")
+                    if _is_super_cap:
+                        st.info(f"Huidige keuze: 1. {_rc_h.get('captain_1','')} (3.0×), 2. {_rc_h.get('captain_2','')} (2.5×), 3. {_rc_h.get('captain_3','')} (2.0×)")
+                    else:
+                        st.info(f"Huidige keuze: {_rc_h.get('captain_1','')} (2.0×)")
 
                 _is_gestart_cap = bool(_deadline_cap_dt and datetime.now(_AMS) >= _deadline_cap_dt)
                 if _is_gestart_cap:
                     st.warning(f"⚠️ De deadline voor etappe {_et_cap} is verstreken ({_deadline_cap_str}). Captains kunnen niet meer worden gewijzigd.")
                 else:
                     if _deadline_cap_str:
-                        st.caption(f"Deadline: {_deadline_cap_str}")
+                        _cap_type_label = "Super etappe – 3 captains (3.0× / 2.5× / 2.0×)" if _is_super_cap else "Etappe – 1 captain (2.0×)"
+                        st.caption(f"Deadline: {_deadline_cap_str}   •   {_cap_type_label}")
                     _mr_cap = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_cap]['renner_naam'].tolist()
                     if not _mr_cap:
                         st.info("Je hebt nog geen ploeg opgeslagen. Ga naar het Ploeg tabblad.")
@@ -2241,15 +2515,23 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _mr_cap_v = [_verrijk_cap(r) for r in sorted(_mr_cap)]
                         _mr_cap_sorted = sorted(_mr_cap_v, key=lambda x: (0 if x.startswith("✅") else 1, x))
                         st.caption("✅ = bevestigd op startlijst   ○ = niet bevestigd")
-                        _c1_v = st.selectbox("Kies Captain 1 (3.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
-                        _c2_v = st.selectbox("Kies Captain 2 (2.5×):", [r for r in _mr_cap_sorted if r != _c1_v], key=f"cap2_{_spel_param}_{_et_cap}")
-                        _c3_v = st.selectbox("Kies Captain 3 (2.0×):", [r for r in _mr_cap_sorted if r not in [_c1_v, _c2_v]], key=f"cap3_{_spel_param}_{_et_cap}")
+
+                        if _is_super_cap:
+                            _c1_v = st.selectbox("Kies Captain 1 (3.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
+                            _c2_v = st.selectbox("Kies Captain 2 (2.5×):", [r for r in _mr_cap_sorted if r != _c1_v], key=f"cap2_{_spel_param}_{_et_cap}")
+                            _c3_v = st.selectbox("Kies Captain 3 (2.0×):", [r for r in _mr_cap_sorted if r not in [_c1_v, _c2_v]], key=f"cap3_{_spel_param}_{_et_cap}")
+                        else:
+                            _c1_v = st.selectbox("Kies Captain (2.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
+                            _c2_v = ""
+                            _c3_v = ""
 
                         def _strip_cap(s):
                             return s.replace("✅ ", "").replace("○ ", "")
 
-                        if st.button("Captains Opslaan", key=f"cap_save_{_spel_param}_{_et_cap}"):
-                            _c1_s, _c2_s, _c3_s = _strip_cap(_c1_v), _strip_cap(_c2_v), _strip_cap(_c3_v)
+                        if st.button("Captain Opslaan", key=f"cap_save_{_spel_param}_{_et_cap}"):
+                            _c1_s = _strip_cap(_c1_v)
+                            _c2_s = _strip_cap(_c2_v) if _is_super_cap else ""
+                            _c3_s = _strip_cap(_c3_v) if _is_super_cap else ""
                             _new_cap = pd.DataFrame([{
                                 "speler_naam": _naam_cap, "ronde": _spel_param, "etappe": str(_et_cap),
                                 "captain_1": _c1_s, "captain_2": _c2_s, "captain_3": _c3_s
