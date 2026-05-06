@@ -1247,6 +1247,19 @@ def bereken_ronde_score(mijn_renners, uit_df):
         if row.get('rider', '') not in renner_set:
             continue
         type_r = str(row.get('type_result', '')).strip()
+
+        # Oranje schildje: flat 20 punten per etappe, ongeacht positie
+        if type_r == "schildjes":
+            totaal += 20
+            details.append({
+                'etappe': row.get('etappe', ''),
+                'type':   'schildjes',
+                'renner': row['rider'],
+                'rank':   row.get('rank', ''),
+                'punten': 20,
+            })
+            continue
+
         tabel = _RONDE_PUNTEN.get(type_r, {})
         if not tabel:
             continue
