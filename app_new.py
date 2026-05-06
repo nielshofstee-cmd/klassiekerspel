@@ -2302,7 +2302,10 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # =============================================
     with tab_wissels:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Wissels</h1>', unsafe_allow_html=True)
-        _MAX_WISSELS_R = 5
+        _MAX_WISSELS_R      = 3   # max 3 wissels per speler
+        _MAX_PER_LAND_W     = 6   # max per land NA wissel (verruimd)
+        _MAX_PER_PLOEG_W    = 3   # max per ploeg NA wissel (verruimd)
+
         if _pr_df_all_ronde.empty or _r_race.empty:
             st.info("Data niet beschikbaar.")
         else:
@@ -2324,78 +2327,194 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 else:
                     _actief_w = _sp_rows_w['renner_naam'].tolist()
                     _wissels_gebruikt_w = 0
-                _wissels_over_w = _MAX_WISSELS_R - _wissels_gebruikt_w
+                _wissels_over_w = max(0, _MAX_WISSELS_R - _wissels_gebruikt_w)
+
+                # ── Bepaal laatste gerijde etappe en DNF-renners ──────────────
+                _laatste_et_nr_w = None
+                _dnf_renners_w = set()
+                if not _uit_ronde.empty and 'type_result' in _uit_ronde.columns and 'etappe' in _uit_ronde.columns:
+                    _et_uitsl = _uit_ronde[_uit_ronde['type_result'] == 'etappe']
+                    if not _et_uitsl.empty:
+                        _laatste_et_nr_w = str(max(
+                            _et_uitsl['etappe'].unique(),
+                            key=lambda x: int(str(x)) if str(x).isdigit() else 0
+                        ))
+                        _et_last_rows = _et_uitsl[_et_uitsl['etappe'].astype(str) == _laatste_et_nr_w]
+                        # DNF/OTL/DSQ: rank is niet-numeriek
+                        _dnf_mask = ~pd.to_numeric(_et_last_rows['rank'], errors='coerce').notna()
+                        _dnf_renners_w = set(_et_last_rows[_dnf_mask]['rider'].tolist())
+
+                # ── Bepaal beschermde renners (niet inwisselbaar) ─────────────
+                _beschermd_w = {}   # rider -> reden
+                if not _uit_ronde.empty:
+                    # GC top 10
+                    _gc_w = _uit_ronde[_uit_ronde['type_result'] == 'gc']
+                    if not _gc_w.empty:
+                        _lgc_et = str(max(_gc_w['etappe'].unique(),
+                                          key=lambda x: int(str(x)) if str(x).isdigit() else 0))
+                        _gc_last_w = _gc_w[_gc_w['etappe'].astype(str) == _lgc_et].copy()
+                        _gc_last_w['_rn'] = pd.to_numeric(_gc_last_w['rank'], errors='coerce')
+                        for _r in _gc_last_w[_gc_last_w['_rn'] <= 10]['rider'].tolist():
+                            _beschermd_w[_r] = f"🏆 GC top 10 (et.{_lgc_et})"
+                    # Points/KOM/Youth top 3
+                    for _klt, _lbl in [('points', '💚 Punten'), ('kom', '🔴 KOM'), ('youth', '⬜ Jongeren')]:
+                        _kl_w = _uit_ronde[_uit_ronde['type_result'] == _klt]
+                        if not _kl_w.empty:
+                            _lkl_et = str(max(_kl_w['etappe'].unique(),
+                                              key=lambda x: int(str(x)) if str(x).isdigit() else 0))
+                            _kl_last_w = _kl_w[_kl_w['etappe'].astype(str) == _lkl_et].copy()
+                            _kl_last_w['_rn'] = pd.to_numeric(_kl_last_w['rank'], errors='coerce')
+                            for _r in _kl_last_w[_kl_last_w['_rn'] <= 3]['rider'].tolist():
+                                if _r not in _beschermd_w:
+                                    _beschermd_w[_r] = f"{_lbl} top 3 (et.{_lkl_et})"
+
+                # ── Huidig team overzicht ──────────────────────────────────────
+                col_w1, col_w2, col_w3 = st.columns(3)
+                col_w1.metric("Wissels gebruikt", f"{_wissels_gebruikt_w} / {_MAX_WISSELS_R}")
+                col_w2.metric("Wissels over", str(_wissels_over_w))
+                if _laatste_et_nr_w:
+                    col_w3.metric("Laatste etappe (DNF-check)", f"Etappe {_laatste_et_nr_w}")
+                else:
+                    col_w3.info("Nog geen etappe-uitslag beschikbaar.")
 
                 st.subheader(f"Huidig team — {len(_actief_w)} renners")
-                st.metric("Wissels over", f"{_wissels_over_w} / {_MAX_WISSELS_R}")
                 _team_info_w = []
                 for _rn_w in sorted(_actief_w):
                     _rn_info_w = _r_race[_r_race['renner'] == _rn_w]
+                    _is_dnf_w   = _rn_w in _dnf_renners_w
+                    _besch_w    = _beschermd_w.get(_rn_w, "")
+                    _status_w   = ("🔒 " + _besch_w) if _besch_w else ("❌ DNF" if _is_dnf_w else "✅ Actief")
                     if not _rn_info_w.empty:
                         _ri_w = _rn_info_w.iloc[0]
-                        _team_info_w.append({"Renner": _rn_w, "Ploeg": _ri_w.get('team', ''),
-                                              "Land": _ri_w.get('land', ''),
-                                              "Categorie": _CAT_DISPLAY.get(str(_ri_w.get('_cat', '')), str(_ri_w.get('_cat', '')))})
+                        _team_info_w.append({
+                            "Renner":    _rn_w,
+                            "Status":    _status_w,
+                            "Ploeg":     _ri_w.get('team', ''),
+                            "Land":      _ri_w.get('land', ''),
+                            "Categorie": _CAT_DISPLAY.get(str(_ri_w.get('_cat', '')), str(_ri_w.get('_cat', ''))),
+                        })
                     else:
-                        _team_info_w.append({"Renner": _rn_w, "Ploeg": "", "Land": "", "Categorie": ""})
+                        _team_info_w.append({"Renner": _rn_w, "Status": _status_w,
+                                             "Ploeg": "", "Land": "", "Categorie": ""})
                 _df_team_w = pd.DataFrame(_team_info_w)
                 st.dataframe(_df_team_w, hide_index=True, use_container_width=True,
                              height=TABLE_HEADER_HEIGHT + len(_df_team_w) * TABLE_ROW_HEIGHT)
 
                 st.divider()
+
                 if _wissels_over_w <= 0:
                     st.warning(f"Je hebt alle {_MAX_WISSELS_R} wissels al gebruikt.")
+                elif _laatste_et_nr_w is None:
+                    st.info("Er zijn nog geen etappe-uitslagen beschikbaar. Wissels zijn pas mogelijk nadat de eerste etappe is gescraped.")
                 else:
-                    st.subheader("Wissel doorvoeren")
-                    _actief_set_w = set(_actief_w)
-                    _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist() if r not in _actief_set_w])
-                    _n_w = st.number_input("Hoeveel wissels?", min_value=1,
-                                           max_value=min(_wissels_over_w, len(_actief_w)), value=1, step=1,
-                                           key=f"n_wissels_{_spel_param}")
-                    _uit_keuzes_w, _in_keuzes_w = [], []
-                    for _i_w in range(int(_n_w)):
-                        st.markdown(f"**Wissel {_i_w + 1}**")
-                        _cw1, _cw2 = st.columns(2)
-                        with _cw1:
-                            _uit_w = st.selectbox("Eruit:", [r for r in _actief_w if r not in _uit_keuzes_w],
-                                                   key=f"wuit_{_spel_param}_{_i_w}")
-                            _uit_keuzes_w.append(_uit_w)
-                        with _cw2:
-                            _in_w = st.selectbox("Erin:", [r for r in _beschikbaar_w if r not in _in_keuzes_w],
-                                                  key=f"win_{_spel_param}_{_i_w}")
-                            _in_keuzes_w.append(_in_w)
+                    # Renners die uit mogen: DNF in laatste etappe EN niet beschermd
+                    _inwisselbaar_w = [r for r in _actief_w
+                                       if r in _dnf_renners_w and r not in _beschermd_w]
 
-                    if st.button("✅ Bevestig wissels", key=f"wissel_btn_{_spel_param}"):
-                        try:
-                            _ws_pr_w2 = sh.worksheet("speler_teams_rondes")
-                            _pr_w2_vals = _ws_pr_w2.get_all_values()
-                            _pr_w2_hdrs = [str(h).strip().lower() for h in _pr_w2_vals[0]]
-                            _pr_w2_df = pd.DataFrame(_pr_w2_vals[1:], columns=_pr_w2_hdrs) if len(_pr_w2_vals) > 1 else pd.DataFrame(columns=_pr_w2_hdrs)
-                            _pr_w2_df = _pr_w2_df.loc[:, _pr_w2_df.columns != '']
-                            _datum_w2 = _today_w.strftime("%Y-%m-%d")
-                            _mask_sp_w2 = (_pr_w2_df['speler_naam'] == _naam_w) & (_pr_w2_df['spel'] == _spel_param)
-                            for _r_uit_w in _uit_keuzes_w:
-                                _idx_w = _pr_w2_df[
-                                    _mask_sp_w2 & (_pr_w2_df['renner_naam'] == _r_uit_w) &
-                                    ((_pr_w2_df['tot_datum'] == "") | _pr_w2_df['tot_datum'].isna())
-                                ].index
-                                _pr_w2_df.loc[_idx_w, 'tot_datum'] = _datum_w2
-                            _cols_wr = ['speler_naam', 'spel', 'renner_naam', 'vanaf_datum', 'tot_datum']
-                            for _r_in_w in _in_keuzes_w:
-                                _new_wr = pd.DataFrame([{"speler_naam": _naam_w, "spel": _spel_param,
-                                                          "renner_naam": _r_in_w, "vanaf_datum": _datum_w2, "tot_datum": ""}])
-                                _pr_w2_df = pd.concat([_pr_w2_df, _new_wr], ignore_index=True)
-                            for _c_wr in _cols_wr:
-                                if _c_wr not in _pr_w2_df.columns:
-                                    _pr_w2_df[_c_wr] = ""
-                            _ws_pr_w2.clear()
-                            _ws_pr_w2.update([_cols_wr] + _pr_w2_df[_cols_wr].fillna("").values.tolist())
-                            st.cache_data.clear()
-                            st.success(f"Wissels opgeslagen! {', '.join(_uit_keuzes_w)} → {', '.join(_in_keuzes_w)}")
-                            time.sleep(1)
-                            st.rerun()
-                        except Exception as _ew:
-                            st.error(f"Fout bij opslaan: {_ew}")
+                    if not _inwisselbaar_w:
+                        st.info(
+                            f"Geen van jouw renners heeft een DNF in etappe {_laatste_et_nr_w}, "
+                            "of alle DNF-renners staan in een beschermd klassement."
+                        )
+                    else:
+                        st.subheader("Wissel doorvoeren")
+                        st.caption(
+                            f"Alleen renners met DNF in etappe {_laatste_et_nr_w} mogen eruit. "
+                            f"Beschermde renners (GC top 10 / andere top 3) zijn niet inwisselbaar. "
+                            f"Na de wissel gelden: max {MAX_TOPPER_R} toppers, max {MAX_SUBTOPPER_R} subtoppers, "
+                            f"max {_MAX_PER_PLOEG_W} per ploeg, max {_MAX_PER_LAND_W} per land."
+                        )
+
+                        _actief_set_w = set(_actief_w)
+                        _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist()
+                                                 if r not in _actief_set_w])
+
+                        _max_n_w = min(_wissels_over_w, len(_inwisselbaar_w))
+                        _n_w = st.number_input("Hoeveel wissels?", min_value=1, max_value=_max_n_w,
+                                               value=1, step=1, key=f"n_wissels_{_spel_param}")
+
+                        _uit_keuzes_w, _in_keuzes_w = [], []
+                        for _i_w in range(int(_n_w)):
+                            st.markdown(f"**Wissel {_i_w + 1}**")
+                            _cw1, _cw2 = st.columns(2)
+                            with _cw1:
+                                _uit_opties_w = [r for r in _inwisselbaar_w if r not in _uit_keuzes_w]
+                                _uit_w = st.selectbox("Eruit (DNF):", _uit_opties_w,
+                                                      key=f"wuit_{_spel_param}_{_i_w}")
+                                _uit_keuzes_w.append(_uit_w)
+                            with _cw2:
+                                _in_w = st.selectbox("Erin:", [r for r in _beschikbaar_w if r not in _in_keuzes_w],
+                                                     key=f"win_{_spel_param}_{_i_w}")
+                                _in_keuzes_w.append(_in_w)
+
+                        if st.button("✅ Bevestig wissels", key=f"wissel_btn_{_spel_param}"):
+                            # ── Valideer nieuw team ───────────────────────────
+                            _nieuw_team_w = [r for r in _actief_w if r not in _uit_keuzes_w] + _in_keuzes_w
+                            _nieuw_info_w = _r_race[_r_race['renner'].isin(_nieuw_team_w)]
+                            _w_err = []
+
+                            _n_top_w  = int((_nieuw_info_w['_cat'] == 'topper').sum())
+                            _n_sub_w  = int((_nieuw_info_w['_cat'] == 'subtopper').sum())
+                            _n_ren_w  = int((_nieuw_info_w['_cat'] == 'renner').sum())
+                            if _n_top_w > MAX_TOPPER_R:
+                                _w_err.append(f"Te veel toppers: {_n_top_w} (max {MAX_TOPPER_R})")
+                            if _n_sub_w > MAX_SUBTOPPER_R:
+                                _w_err.append(f"Te veel subtoppers: {_n_sub_w} (max {MAX_SUBTOPPER_R})")
+                            if _n_ren_w < 3:
+                                _w_err.append(f"Te weinig renners: {_n_ren_w} (min 3)")
+
+                            if 'team' in _nieuw_info_w.columns:
+                                _ploeg_cnt_w = _nieuw_info_w['team'].value_counts()
+                                _ploeg_viol_w = _ploeg_cnt_w[_ploeg_cnt_w > _MAX_PER_PLOEG_W].index.tolist()
+                                if _ploeg_viol_w:
+                                    _w_err.append(f"Max {_MAX_PER_PLOEG_W} per ploeg overschreden: {', '.join(_ploeg_viol_w)}")
+                            if 'land' in _nieuw_info_w.columns:
+                                _land_cnt_w = _nieuw_info_w['land'].value_counts()
+                                _land_viol_w = _land_cnt_w[_land_cnt_w > _MAX_PER_LAND_W].index.tolist()
+                                if _land_viol_w:
+                                    _w_err.append(f"Max {_MAX_PER_LAND_W} per land overschreden: {', '.join(_land_viol_w)}")
+
+                            # Controleer of "eruit" renners nog steeds eligible zijn
+                            _niet_elig_w = [r for r in _uit_keuzes_w if r not in _dnf_renners_w or r in _beschermd_w]
+                            if _niet_elig_w:
+                                _w_err.append(f"Niet inwisselbaar: {', '.join(_niet_elig_w)}")
+
+                            if _w_err:
+                                for _we in _w_err:
+                                    st.error(_we)
+                            else:
+                                try:
+                                    _ws_pr_w2 = sh.worksheet("speler_teams_rondes")
+                                    _pr_w2_vals = _ws_pr_w2.get_all_values()
+                                    _pr_w2_hdrs = [str(h).strip().lower() for h in _pr_w2_vals[0]]
+                                    _pr_w2_df = (pd.DataFrame(_pr_w2_vals[1:], columns=_pr_w2_hdrs)
+                                                 if len(_pr_w2_vals) > 1
+                                                 else pd.DataFrame(columns=_pr_w2_hdrs))
+                                    _pr_w2_df = _pr_w2_df.loc[:, _pr_w2_df.columns != '']
+                                    _datum_w2 = _today_w.strftime("%Y-%m-%d")
+                                    _mask_sp_w2 = (_pr_w2_df['speler_naam'] == _naam_w) & (_pr_w2_df['spel'] == _spel_param)
+                                    for _r_uit_w in _uit_keuzes_w:
+                                        _idx_w = _pr_w2_df[
+                                            _mask_sp_w2 & (_pr_w2_df['renner_naam'] == _r_uit_w) &
+                                            ((_pr_w2_df['tot_datum'] == "") | _pr_w2_df['tot_datum'].isna())
+                                        ].index
+                                        _pr_w2_df.loc[_idx_w, 'tot_datum'] = _datum_w2
+                                    _cols_wr = ['speler_naam', 'spel', 'renner_naam', 'vanaf_datum', 'tot_datum']
+                                    for _r_in_w in _in_keuzes_w:
+                                        _new_wr = pd.DataFrame([{"speler_naam": _naam_w, "spel": _spel_param,
+                                                                  "renner_naam": _r_in_w, "vanaf_datum": _datum_w2, "tot_datum": ""}])
+                                        _pr_w2_df = pd.concat([_pr_w2_df, _new_wr], ignore_index=True)
+                                    for _c_wr in _cols_wr:
+                                        if _c_wr not in _pr_w2_df.columns:
+                                            _pr_w2_df[_c_wr] = ""
+                                    _ws_pr_w2.clear()
+                                    _ws_pr_w2.update([_cols_wr] + _pr_w2_df[_cols_wr].fillna("").values.tolist())
+                                    st.cache_data.clear()
+                                    st.success(f"Wissels opgeslagen! {', '.join(_uit_keuzes_w)} → {', '.join(_in_keuzes_w)}")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as _ew:
+                                    st.error(f"Fout bij opslaan: {_ew}")
 
     # =============================================
     # CAPTAINS
