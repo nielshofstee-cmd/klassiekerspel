@@ -1446,6 +1446,113 @@ if st.session_state['ingelogd_speler'] is None and not st.session_state.get('uit
         st.session_state['ingelogd_speler'] = opgeslagen
         st.rerun()
 
+# ── LANDING PAGE: geen login vereist ─────────────────────────────────────────
+_GELDIGE_SPELLEN = {"klassiekerspel", "giro", "tour", "vuelta"}
+_spel_param = st.query_params.get("spel", "").lower().strip()
+
+if _spel_param and _spel_param not in _GELDIGE_SPELLEN:
+    st.query_params.clear()
+    st.rerun()
+
+if _spel_param == "":
+    # Logout afhandelen als er ?logout=1 in de URL staat
+    if st.query_params.get("logout") == "1":
+        try:
+            cookie_manager.delete(_COOKIE_NAME)
+        except Exception:
+            pass
+        st.session_state['ingelogd_speler'] = None
+        st.session_state['uitgelogd'] = True
+        st.query_params.clear()
+        st.rerun()
+
+    _li_early = st.session_state.get('ingelogd_speler')
+    if _li_early:
+        _creds_src_e = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
+        _row_e = _creds_src_e[_creds_src_e['speler_naam'] == _li_early]
+        _email_e = _row_e['email'].iloc[0] if not _row_e.empty and 'email' in _row_e.columns else ""
+        _nav_l = (
+            f'<div class="nav-container"><div class="nav-header">'
+            f'<div style="display:flex;align-items:center;">'
+            f'<a href="/" style="text-decoration:none;"><span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span></a>'
+            f'</div>'
+            f'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">'
+            f'<span style="font-size:12px;color:rgba(255,255,255,0.85);font-weight:600;">👤 {_li_early}</span>'
+            f'<span style="font-size:10px;color:rgba(255,255,255,0.45);">{_email_e}</span>'
+            f'<form action="" method="get" style="margin:0;padding:0;">'
+            f'<input type="hidden" name="logout" value="1">'
+            f'<button type="submit" style="background:transparent;border:none;color:rgba(255,120,80,0.85);cursor:pointer;font-size:10px;padding:0;margin-top:1px;">🚪 uitloggen</button>'
+            f'</form>'
+            f'</div></div></div>'
+        )
+    else:
+        _nav_l = (
+            f'<div class="nav-container"><div class="nav-header">'
+            f'<div style="display:flex;align-items:center;">'
+            f'<span class="nav-logo">K1<span>x</span>Sam<span class="sep">|</span>Wielerspel</span>'
+            f'</div></div></div>'
+        )
+    st.markdown(_nav_l, unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    .spel-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+        margin: 48px 0 32px 0;
+    }
+    @media (max-width: 900px) { .spel-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .spel-grid { grid-template-columns: 1fr; } }
+    .spel-card {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: white; border-radius: 20px; padding: 40px 24px 36px 24px;
+        text-decoration: none; color: #0d1f35;
+        box-shadow: 0 4px 24px rgba(13,31,53,0.10); border: 1.5px solid #d8e0eb;
+        transition: box-shadow 0.2s ease, transform 0.18s ease, border-color 0.18s ease;
+        min-height: 220px; cursor: pointer;
+    }
+    .spel-card:hover { box-shadow: 0 12px 40px rgba(13,31,53,0.18); transform: translateY(-4px); border-color: #f47c20; text-decoration: none; }
+    .spel-card-icon { font-size: 52px; line-height: 1; margin-bottom: 18px; }
+    .spel-card-title { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: #0d1f35; margin-bottom: 6px; line-height: 1; }
+    .spel-card-sub { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; color: #8a9ab5; text-transform: uppercase; letter-spacing: 1.5px; }
+    .spel-card-badge { margin-top: 14px; background: #f47c20; color: white; font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase; }
+    .spel-card-soon { margin-top: 14px; background: #eef1f6; color: #8a9ab5; font-family: 'DM Sans', sans-serif; font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase; }
+    .landing-title { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: #0d1f35; letter-spacing: 2px; margin-bottom: 4px; }
+    .landing-sub { font-family: 'DM Sans', sans-serif; font-size: 15px; color: #5a6a82; margin-bottom: 0; }
+    </style>
+    <div style="margin-top:32px;">
+        <div class="landing-title">Kies een spel</div>
+        <div class="landing-sub">Selecteer een van de vier wielerspellen om door te gaan.</div>
+    </div>
+    <div class="spel-grid">
+        <a href="?spel=klassiekerspel" class="spel-card">
+            <div class="spel-card-icon">🚴</div>
+            <div class="spel-card-title">Klassiekerspel</div>
+            <div class="spel-card-sub">Voorjaarswedstrijden 2026</div>
+            <div class="spel-card-badge">Actief</div>
+        </a>
+        <a href="?spel=giro" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/it.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Giro d'Italia</div>
+            <div class="spel-card-sub">Grote ronde · Mei 2026</div>
+            <div class="spel-card-badge">Actief</div>
+        </a>
+        <a href="?spel=tour" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/fr.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Tour de France</div>
+            <div class="spel-card-sub">Grote ronde · Juli 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+        <a href="?spel=vuelta" class="spel-card">
+            <div class="spel-card-icon"><img src="https://flagcdn.com/w80/es.png" width="64" style="border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);"></div>
+            <div class="spel-card-title">Vuelta a España</div>
+            <div class="spel-card-sub">Grote ronde · Augustus 2026</div>
+            <div class="spel-card-soon">Binnenkort</div>
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
 if st.session_state['ingelogd_speler'] is None:
     st.subheader("🔐 Inloggen")
     _login_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
@@ -1525,19 +1632,9 @@ _nav_html = (
 )
 st.markdown(_nav_html, unsafe_allow_html=True)
 
-# =============================================
-# ROUTING OP BASIS VAN ?spel= QUERY PARAM
-# =============================================
-_GELDIGE_SPELLEN = {"klassiekerspel", "giro", "tour", "vuelta"}
-_spel_param = st.query_params.get("spel", "").lower().strip()
-
-# Onbekende waarde → redirect naar home
-if _spel_param and _spel_param not in _GELDIGE_SPELLEN:
-    st.query_params.clear()
-    st.rerun()
-
-# ── LANDING PAGE (geen ?spel= param) ─────────────────────────────────────────
-if _spel_param == "":
+# ── _spel_param al bepaald boven de login-check ──────────────────────────────
+# (landing page en routing worden afgehandeld vóór de login)
+if False:
     st.markdown("""
     <style>
     .spel-grid {
