@@ -1221,6 +1221,50 @@ def debug_pcs_row_html(url, max_rows=5):
     except Exception as e:
         return False, str(e)
 
+_RONDE_PUNTEN = {
+    "etappe": {1:50, 2:44, 3:40, 4:36, 5:32, 6:30, 7:28, 8:26, 9:24, 10:22,
+               11:20, 12:18, 13:16, 14:14, 15:12, 16:10, 17:8, 18:6, 19:4, 20:2},
+    "gc":     {1:10, 2:8, 3:6, 4:4, 5:2},
+    "points": {1:8,  2:6, 3:4, 4:2, 5:1},
+    "kom":    {1:8,  2:6, 3:4, 4:2, 5:1},
+    "youth":  {1:6,  2:4, 3:3, 4:2, 5:1},
+}
+
+
+def bereken_ronde_score(mijn_renners, uit_df):
+    """
+    Berekent totaalpunten voor een speler over alle etappes en klassementen.
+    mijn_renners : list van rennersnamen
+    uit_df       : uitslagen_rondes DataFrame (al gefilterd op ronde/spel)
+    Returns (totaal_int, details_list_of_dicts)
+    """
+    if not mijn_renners or uit_df.empty:
+        return 0, []
+    renner_set = set(mijn_renners)
+    totaal = 0
+    details = []
+    for _, row in uit_df.iterrows():
+        if row.get('rider', '') not in renner_set:
+            continue
+        type_r = str(row.get('type_result', '')).strip()
+        tabel = _RONDE_PUNTEN.get(type_r, {})
+        if not tabel:
+            continue
+        rank_str = str(row.get('rank', '')).strip()
+        if rank_str.isdigit():
+            pnt = tabel.get(int(rank_str), 0)
+            if pnt > 0:
+                totaal += pnt
+                details.append({
+                    'etappe': row.get('etappe', ''),
+                    'type':   type_r,
+                    'renner': row['rider'],
+                    'rank':   rank_str,
+                    'punten': pnt,
+                })
+    return totaal, details
+
+
 def save_ronde_uitslagen(spel, etappe, type_result, data):
     """Slaat gescrapete resultaten op in de 'uitslagen_rondes' sheet."""
     COLS = ['spel', 'etappe', 'type_result', 'rank', 'rider', 'team']
@@ -1903,18 +1947,26 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # =============================================
     with tab_klassement:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
-        st.info("ℹ️ Puntentelling wordt later toegevoegd. Hieronder zie je een overzicht van alle deelnemers en hun team.")
         if _pr_df_all_ronde.empty:
             st.warning("Nog geen ploegen opgeslagen voor dit spel.")
         else:
             _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
             _klas_data = []
-            for _sp_kl in _spelers_kl:
-                _sp_rows_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]
-                _klas_data.append({"Deelnemer": _sp_kl, "Renners geselecteerd": len(_sp_rows_kl), "Punten": "—"})
-            _df_klas = pd.DataFrame(_klas_data)
-            st.dataframe(_df_klas, hide_index=True, use_container_width=True,
-                         height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT)
+            with st.spinner("Klassement berekenen..."):
+                for _sp_kl in _spelers_kl:
+                    _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
+                    _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde)
+                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl})
+            _df_klas = (pd.DataFrame(_klas_data)
+                        .sort_values("Punten", ascending=False)
+                        .reset_index(drop=True))
+            _df_klas.index += 1
+            st.dataframe(
+                _df_klas,
+                column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                use_container_width=True,
+                height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT,
+            )
 
     # =============================================
     # UITSLAGEN
@@ -1980,21 +2032,38 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                          format_func=lambda x: _TYPE_LABELS_M.get(x, x),
                                          key=f"mx_type_{_spel_param}")
 
+            _weergave_mx = st.radio("Weergave:", ["Punten", "Positie"], horizontal=True, key=f"mx_view_{_spel_param}")
+
             _mijn_r_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]['renner_naam'].tolist()
             _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
             _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
+            _tabel_mx = _RONDE_PUNTEN.get(_ges_type_mx, {})
 
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
                 _rij_mx = {"Renner": _rn_mx}
+                _totaal_mx = 0
                 for _et_mx in _etappes_mx:
                     _et_r_mx = _uit_type_mx[_uit_type_mx['etappe'].astype(str) == str(_et_mx)]
                     _r_row_mx = _et_r_mx[_et_r_mx['rider'] == _rn_mx]
-                    _rij_mx[f"E{_et_mx}"] = _r_row_mx.iloc[0]['rank'] if not _r_row_mx.empty else "—"
+                    if not _r_row_mx.empty:
+                        _rank_mx = _r_row_mx.iloc[0]['rank']
+                        if _weergave_mx == "Punten":
+                            _pnt_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
+                            _rij_mx[f"E{_et_mx}"] = _pnt_mx
+                            _totaal_mx += _pnt_mx
+                        else:
+                            _rij_mx[f"E{_et_mx}"] = _rank_mx
+                    else:
+                        _rij_mx[f"E{_et_mx}"] = 0 if _weergave_mx == "Punten" else "—"
+                if _weergave_mx == "Punten":
+                    _rij_mx["Totaal"] = _totaal_mx
                 _matrix_r.append(_rij_mx)
 
             if _matrix_r:
                 _df_mx = pd.DataFrame(_matrix_r).set_index("Renner")
+                if _weergave_mx == "Punten":
+                    _df_mx = _df_mx.sort_values("Totaal", ascending=False)
                 st.dataframe(_df_mx, use_container_width=True,
                              height=TABLE_HEADER_HEIGHT + len(_df_mx) * TABLE_ROW_HEIGHT)
             else:
@@ -2021,9 +2090,16 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if not _sp_renners_tm:
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
             else:
+                # Bereken punten per renner
+                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde)
+                _renner_pnt_tm = {}
+                for _d in _det_tm:
+                    _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
+
                 _team_rows_tm = []
                 for _rn_tm in sorted(_sp_renners_tm):
                     _info_tm = _r_race[_r_race['renner'] == _rn_tm]
+                    _pnt_tm = _renner_pnt_tm.get(_rn_tm, 0)
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
                         _team_rows_tm.append({
@@ -2031,14 +2107,21 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             "Categorie": _CAT_DISPLAY.get(str(_ri_tm.get('_cat', '')), str(_ri_tm.get('_cat', ''))),
                             "Ploeg": _ri_tm.get('team', ''),
                             "Land": _ri_tm.get('land', ''),
-                            "Punten": "—",
+                            "Punten": _pnt_tm,
                         })
                     else:
-                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": "—"})
-                _df_tm = pd.DataFrame(_team_rows_tm)
-                st.dataframe(_df_tm, hide_index=True, use_container_width=True,
-                             height=TABLE_HEADER_HEIGHT + len(_df_tm) * TABLE_ROW_HEIGHT)
-                st.caption(f"Totaal: {len(_sp_renners_tm)} renners · Puntentelling volgt later.")
+                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
+                _df_tm = (pd.DataFrame(_team_rows_tm)
+                          .sort_values("Punten", ascending=False)
+                          .reset_index(drop=True))
+                st.dataframe(
+                    _df_tm,
+                    column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                    hide_index=True,
+                    use_container_width=True,
+                    height=TABLE_HEADER_HEIGHT + len(_df_tm) * TABLE_ROW_HEIGHT,
+                )
+                st.metric("Totaal", f"{_tot_tm} punten", help=f"{len(_sp_renners_tm)} renners")
 
     # =============================================
     # WISSELS
