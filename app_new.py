@@ -1231,32 +1231,68 @@ _RONDE_PUNTEN = {
 }
 
 
-def bereken_ronde_score(mijn_renners, uit_df):
+def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None):
     """
     Berekent totaalpunten voor een speler over alle etappes en klassementen.
     mijn_renners : list van rennersnamen
     uit_df       : uitslagen_rondes DataFrame (al gefilterd op ronde/spel)
+    keuzes_df    : keuzes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
+    speler_naam  : naam van de speler voor captain lookup, optioneel
+    etappes_df   : etappes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
     Returns (totaal_int, details_list_of_dicts)
     """
     if not mijn_renners or uit_df.empty:
         return 0, []
+
+    # Build etappe type lookup: etappe_str -> 'super'/'normaal'/'itt'/'tt'
+    _et_type_lkp = {}
+    if etappes_df is not None and not etappes_df.empty and 'type' in etappes_df.columns:
+        for _, _er in etappes_df.iterrows():
+            _et_type_lkp[str(_er['etappe'])] = str(_er.get('type', '')).strip().lower()
+
+    # Build captain lookup: etappe_str -> {rider_name: multiplier}
+    _cap_lkp = {}
+    if keuzes_df is not None and not keuzes_df.empty and speler_naam:
+        _sp_k = keuzes_df[keuzes_df['speler_naam'] == speler_naam]
+        for _, _kr in _sp_k.iterrows():
+            _et_k = str(_kr['etappe'])
+            _is_super = 'super' in _et_type_lkp.get(_et_k, '')
+            _caps = {}
+            _c1 = str(_kr.get('captain_1', '')).strip()
+            if _c1:
+                _caps[_c1] = 3.0 if _is_super else 2.0
+            if _is_super:
+                _c2 = str(_kr.get('captain_2', '')).strip()
+                _c3 = str(_kr.get('captain_3', '')).strip()
+                if _c2:
+                    _caps[_c2] = 2.5
+                if _c3:
+                    _caps[_c3] = 2.0
+            _cap_lkp[_et_k] = _caps
+
     renner_set = set(mijn_renners)
     totaal = 0
     details = []
     for _, row in uit_df.iterrows():
-        if row.get('rider', '') not in renner_set:
+        rider = row.get('rider', '')
+        if rider not in renner_set:
             continue
         type_r = str(row.get('type_result', '')).strip()
+        etappe_str = str(row.get('etappe', ''))
+        multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0)
 
         # Oranje schildje: flat 20 punten per etappe, ongeacht positie
         if type_r == "schildjes":
-            totaal += 20
+            base_pnt = 20
+            final_pnt = round(base_pnt * multiplier)
+            totaal += final_pnt
             details.append({
-                'etappe': row.get('etappe', ''),
-                'type':   'schildjes',
-                'renner': row['rider'],
-                'rank':   row.get('rank', ''),
-                'punten': 20,
+                'etappe':     etappe_str,
+                'type':       'schildjes',
+                'renner':     rider,
+                'rank':       row.get('rank', ''),
+                'punten':     final_pnt,
+                'multiplier': multiplier,
             })
             continue
 
@@ -1265,15 +1301,17 @@ def bereken_ronde_score(mijn_renners, uit_df):
             continue
         rank_str = str(row.get('rank', '')).strip()
         if rank_str.isdigit():
-            pnt = tabel.get(int(rank_str), 0)
-            if pnt > 0:
-                totaal += pnt
+            base_pnt = tabel.get(int(rank_str), 0)
+            if base_pnt > 0:
+                final_pnt = round(base_pnt * multiplier)
+                totaal += final_pnt
                 details.append({
-                    'etappe': row.get('etappe', ''),
-                    'type':   type_r,
-                    'renner': row['rider'],
-                    'rank':   rank_str,
-                    'punten': pnt,
+                    'etappe':     etappe_str,
+                    'type':       type_r,
+                    'renner':     rider,
+                    'rank':       rank_str,
+                    'punten':     final_pnt,
+                    'multiplier': multiplier,
                 })
     return totaal, details
 
@@ -2065,7 +2103,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
-                    _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde)
+                    _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
                     _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl})
             _df_klas = (pd.DataFrame(_klas_data)
                         .sort_values("Punten", ascending=False)
@@ -2149,6 +2187,30 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
             _tabel_mx = _RONDE_PUNTEN.get(_ges_type_mx, {})
 
+            # Build etappe type and captain multiplier lookups for matrix
+            _et_type_mx = {}
+            if not _etappes_ronde.empty and 'type' in _etappes_ronde.columns:
+                for _, _emx in _etappes_ronde.iterrows():
+                    _et_type_mx[str(_emx['etappe'])] = str(_emx.get('type', '')).strip().lower()
+            _cap_mx = {}
+            if not _keuzes_ronde.empty and 'etappe' in _keuzes_ronde.columns:
+                _sp_km = _keuzes_ronde[_keuzes_ronde['speler_naam'] == _speler_mx]
+                for _, _kmx in _sp_km.iterrows():
+                    _etk = str(_kmx['etappe'])
+                    _is_sup = 'super' in _et_type_mx.get(_etk, '')
+                    _cm = {}
+                    _ck1 = str(_kmx.get('captain_1', '')).strip()
+                    if _ck1:
+                        _cm[_ck1] = 3.0 if _is_sup else 2.0
+                    if _is_sup:
+                        _ck2 = str(_kmx.get('captain_2', '')).strip()
+                        _ck3 = str(_kmx.get('captain_3', '')).strip()
+                        if _ck2:
+                            _cm[_ck2] = 2.5
+                        if _ck3:
+                            _cm[_ck3] = 2.0
+                    _cap_mx[_etk] = _cm
+
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
                 _rij_mx = {"Renner": _rn_mx}
@@ -2159,7 +2221,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     if not _r_row_mx.empty:
                         _rank_mx = _r_row_mx.iloc[0]['rank']
                         if _weergave_mx == "Punten":
-                            _pnt_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
+                            _base_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
+                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0)
+                            _pnt_mx = round(_base_mx * _mul_mx)
                             _rij_mx[f"E{_et_mx}"] = _pnt_mx
                             _totaal_mx += _pnt_mx
                         else:
@@ -2201,7 +2265,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
             else:
                 # Bereken punten per renner
-                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde)
+                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde, _keuzes_ronde, _speler_tm, _etappes_ronde)
                 _renner_pnt_tm = {}
                 for _d in _det_tm:
                     _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
@@ -2386,10 +2450,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         )
                         _heeft_c = not _keuze_c.empty and str(_keuze_c.iloc[0].get('captain_1', '')).strip() != ""
                         _dl_c = _et_deadlines.get(str(_et_c))
+                        _et_type_ov = str(_etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_c)].iloc[0].get('type', '')).strip().lower() if not _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_c)].empty else ""
+                        _is_super_ov = 'super' in _et_type_ov
                         if _dl_c and _dl_c <= _nu_cap:
                             if _heeft_c:
                                 _rc = _keuze_c.iloc[0]
-                                _cel = f"{_rc.get('captain_1','')} · {_rc.get('captain_2','')} · {_rc.get('captain_3','')}"
+                                if _is_super_ov:
+                                    _cel = f"{_rc.get('captain_1','')} · {_rc.get('captain_2','')} · {_rc.get('captain_3','')}"
+                                else:
+                                    _cel = str(_rc.get('captain_1', ''))
                             else:
                                 _cel = "—"
                             _ov_html += f'<td style="{_td_b_s}">{_cel}</td>'
@@ -2410,6 +2479,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _et_row_cap = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_cap)]
                 _deadline_cap_str = str(_et_row_cap.iloc[0].get('deadline', '')).strip() if not _et_row_cap.empty else ""
                 _deadline_cap_dt = _et_deadlines.get(str(_et_cap))
+                _et_type_cap = str(_et_row_cap.iloc[0].get('type', '')).strip().lower() if not _et_row_cap.empty else ""
+                _is_super_cap = 'super' in _et_type_cap
 
                 _naam_cap = ingelogd_speler
                 _huid_cap = (
@@ -2419,14 +2490,18 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
                 if not _huid_cap.empty:
                     _rc_h = _huid_cap.iloc[0]
-                    st.info(f"Huidige keuze: 1. {_rc_h.get('captain_1','')}, 2. {_rc_h.get('captain_2','')}, 3. {_rc_h.get('captain_3','')}")
+                    if _is_super_cap:
+                        st.info(f"Huidige keuze: 1. {_rc_h.get('captain_1','')} (3.0×), 2. {_rc_h.get('captain_2','')} (2.5×), 3. {_rc_h.get('captain_3','')} (2.0×)")
+                    else:
+                        st.info(f"Huidige keuze: {_rc_h.get('captain_1','')} (2.0×)")
 
                 _is_gestart_cap = bool(_deadline_cap_dt and datetime.now(_AMS) >= _deadline_cap_dt)
                 if _is_gestart_cap:
                     st.warning(f"⚠️ De deadline voor etappe {_et_cap} is verstreken ({_deadline_cap_str}). Captains kunnen niet meer worden gewijzigd.")
                 else:
                     if _deadline_cap_str:
-                        st.caption(f"Deadline: {_deadline_cap_str}")
+                        _cap_type_label = "Super etappe – 3 captains (3.0× / 2.5× / 2.0×)" if _is_super_cap else "Etappe – 1 captain (2.0×)"
+                        st.caption(f"Deadline: {_deadline_cap_str}   •   {_cap_type_label}")
                     _mr_cap = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_cap]['renner_naam'].tolist()
                     if not _mr_cap:
                         st.info("Je hebt nog geen ploeg opgeslagen. Ga naar het Ploeg tabblad.")
@@ -2440,15 +2515,23 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _mr_cap_v = [_verrijk_cap(r) for r in sorted(_mr_cap)]
                         _mr_cap_sorted = sorted(_mr_cap_v, key=lambda x: (0 if x.startswith("✅") else 1, x))
                         st.caption("✅ = bevestigd op startlijst   ○ = niet bevestigd")
-                        _c1_v = st.selectbox("Kies Captain 1 (3.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
-                        _c2_v = st.selectbox("Kies Captain 2 (2.5×):", [r for r in _mr_cap_sorted if r != _c1_v], key=f"cap2_{_spel_param}_{_et_cap}")
-                        _c3_v = st.selectbox("Kies Captain 3 (2.0×):", [r for r in _mr_cap_sorted if r not in [_c1_v, _c2_v]], key=f"cap3_{_spel_param}_{_et_cap}")
+
+                        if _is_super_cap:
+                            _c1_v = st.selectbox("Kies Captain 1 (3.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
+                            _c2_v = st.selectbox("Kies Captain 2 (2.5×):", [r for r in _mr_cap_sorted if r != _c1_v], key=f"cap2_{_spel_param}_{_et_cap}")
+                            _c3_v = st.selectbox("Kies Captain 3 (2.0×):", [r for r in _mr_cap_sorted if r not in [_c1_v, _c2_v]], key=f"cap3_{_spel_param}_{_et_cap}")
+                        else:
+                            _c1_v = st.selectbox("Kies Captain (2.0×):", _mr_cap_sorted, key=f"cap1_{_spel_param}_{_et_cap}")
+                            _c2_v = ""
+                            _c3_v = ""
 
                         def _strip_cap(s):
                             return s.replace("✅ ", "").replace("○ ", "")
 
-                        if st.button("Captains Opslaan", key=f"cap_save_{_spel_param}_{_et_cap}"):
-                            _c1_s, _c2_s, _c3_s = _strip_cap(_c1_v), _strip_cap(_c2_v), _strip_cap(_c3_v)
+                        if st.button("Captain Opslaan", key=f"cap_save_{_spel_param}_{_et_cap}"):
+                            _c1_s = _strip_cap(_c1_v)
+                            _c2_s = _strip_cap(_c2_v) if _is_super_cap else ""
+                            _c3_s = _strip_cap(_c3_v) if _is_super_cap else ""
                             _new_cap = pd.DataFrame([{
                                 "speler_naam": _naam_cap, "ronde": _spel_param, "etappe": str(_et_cap),
                                 "captain_1": _c1_s, "captain_2": _c2_s, "captain_3": _c3_s
