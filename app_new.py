@@ -1705,6 +1705,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _ec_ronde:
             _etappes_ronde = _etappes_ronde[_etappes_ronde[_ec_ronde].str.strip().str.lower() == _spel_param]
 
+    # Deadline etappe 1 → teams van anderen pas zichtbaar na deze tijd
+    _et1_deadline = None
+    if not _etappes_ronde.empty and 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
+        _et1_row = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == "1"]
+        if not _et1_row.empty:
+            _dl1_str = str(_et1_row.iloc[0].get('deadline', '')).strip()
+            for _fmt1 in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    _et1_deadline = datetime.strptime(_dl1_str, _fmt1).replace(tzinfo=_AMS)
+                    break
+                except ValueError:
+                    pass
+    _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
+
     tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
         ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
     )
@@ -1952,9 +1966,16 @@ if _spel_param in ("giro", "tour", "vuelta"):
             st.info("Nog geen uitslagen beschikbaar.")
         else:
             _TYPE_LABELS_M = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
-            _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
-            _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
-            _speler_mx = st.selectbox("Selecteer deelnemer:", _spelers_mx, index=_def_mx, key=f"mx_sp_{_spel_param}")
+
+            if _giro_gestart:
+                _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
+                _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
+                _speler_mx = st.selectbox("Selecteer deelnemer:", _spelers_mx, index=_def_mx, key=f"mx_sp_{_spel_param}")
+            else:
+                _speler_mx = ingelogd_speler
+                if _et1_deadline:
+                    st.info(f"🔒 Teams van andere deelnemers zijn zichtbaar na de start van de {_naam} ({_et1_deadline.strftime('%d-%m-%Y %H:%M')}).")
+
             _ges_type_mx = st.selectbox("Resultaat type:", ["etappe", "gc", "points", "kom", "youth"],
                                          format_func=lambda x: _TYPE_LABELS_M.get(x, x),
                                          key=f"mx_type_{_spel_param}")
@@ -1987,21 +2008,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _pr_df_all_ronde.empty:
             st.info("Nog geen ploegen opgeslagen voor dit spel.")
         else:
-            # Bepaal deadline etappe 1 → na die tijd zijn andere teams zichtbaar
-            _et1_deadline = None
-            if not _etappes_ronde.empty and 'etappe' in _etappes_ronde.columns and 'deadline' in _etappes_ronde.columns:
-                _et1_row = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == "1"]
-                if not _et1_row.empty:
-                    _dl1_str = str(_et1_row.iloc[0].get('deadline', '')).strip()
-                    for _fmt1 in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                        try:
-                            _et1_deadline = datetime.strptime(_dl1_str, _fmt1).replace(tzinfo=_AMS)
-                            break
-                        except ValueError:
-                            pass
-
-            _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
-
             if _giro_gestart:
                 _spelers_tm = sorted(_pr_df_all_ronde['speler_naam'].unique())
                 _def_tm = _spelers_tm.index(ingelogd_speler) if ingelogd_speler in _spelers_tm else 0
