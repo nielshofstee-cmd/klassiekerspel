@@ -1095,14 +1095,18 @@ def scrape_pcs_resultaat(url, limit=None):
         if soup.title and 'just a moment' in soup.title.text.lower():
             return False, "Cloudflare blokkade. Probeer later opnieuw."
 
-        # Classification pages (gc/points/kom/youth) embed the classification
-        # table AFTER any stage-result preview, so we take the last results
-        # table for those URLs and the first for plain stage URLs.
         _url_clean = url.rstrip('/').lower()
         _is_classification = any(_url_clean.endswith(s) for s in ('-gc', '-points', '-kom', '-youth'))
         results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
         if results_tables:
-            table = results_tables[-1] if _is_classification else results_tables[0]
+            if _is_classification:
+                # With many 'results' tables on the page, the classification
+                # table is the one with the most rider links.
+                def _rider_link_count(t):
+                    return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
+                table = max(results_tables, key=_rider_link_count)
+            else:
+                table = results_tables[0]
         else:
             table = None
             for t in soup.find_all('table'):
@@ -2900,7 +2904,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             _cl_is_class = any(_cl_url_lower.endswith(s) for s in ('-gc', '-points', '-kom', '-youth'))
                                             st.write(f"**Herkend als klassement-URL:** {_cl_is_class}")
                                             if _cl_tables:
-                                                _cl_tbl = _cl_tables[-1] if _cl_is_class else _cl_tables[0]
+                                                def _cl_rider_count(t):
+                                                    return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
+                                                _cl_counts = [_cl_rider_count(t) for t in _cl_tables]
+                                                st.write("**Rider-links per tabel:**")
+                                                for _ci, (_ct, _cc) in enumerate(zip(_cl_tables, _cl_counts)):
+                                                    st.write(f"  Tabel {_ci+1}: class=`{_ct.get('class')}` → {_cc} rider-links")
+                                                _cl_tbl = max(_cl_tables, key=_cl_rider_count) if _cl_is_class else _cl_tables[0]
                                                 _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
                                                 _cl_rows = _cl_tbody.find_all('tr')[:5]
                                                 st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
