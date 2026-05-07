@@ -2876,6 +2876,45 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             else:
                                 st.info("Geen etappe-URL geconfigureerd.")
 
+                        with st.expander("🔍 Debug: klassement tabel HTML (GC/punten/KOM/jongeren)"):
+                            _cl_url_options = [(k, lbl, v) for k, lbl, v in _available if k != "url_etappe"]
+                            if not _cl_url_options:
+                                st.info("Geen klassement-URLs beschikbaar.")
+                            else:
+                                _cl_sel = st.selectbox(
+                                    "Kies klassement:",
+                                    options=[k for k, _, _ in _cl_url_options],
+                                    format_func=lambda k: next(lbl for ck, lbl, _ in _cl_url_options if ck == k),
+                                    key=f"cl_debug_sel_{_spel_param}_{_gekozen_etappe}"
+                                )
+                                _cl_url_val = next(v for k, _, v in _cl_url_options if k == _cl_sel)
+                                st.code(_cl_url_val)
+                                if st.button("Haal klassement HTML op", key=f"cl_debug_btn_{_spel_param}_{_gekozen_etappe}"):
+                                    with st.spinner("HTML ophalen..."):
+                                        try:
+                                            _cl_resp = _pcs_get(_cl_url_val.rstrip('/') + '/')
+                                            _cl_soup = BeautifulSoup(_cl_resp.text, 'html.parser')
+                                            _cl_tables = _cl_soup.find_all('table', class_=lambda c: c and 'results' in c)
+                                            st.write(f"**Aantal 'results' tabellen gevonden:** {len(_cl_tables)}")
+                                            _cl_url_lower = _cl_url_val.rstrip('/').lower()
+                                            _cl_is_class = any(_cl_url_lower.endswith(s) for s in ('-gc', '-points', '-kom', '-youth'))
+                                            st.write(f"**Herkend als klassement-URL:** {_cl_is_class}")
+                                            if _cl_tables:
+                                                _cl_tbl = _cl_tables[-1] if _cl_is_class else _cl_tables[0]
+                                                _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
+                                                _cl_rows = _cl_tbody.find_all('tr')[:5]
+                                                st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
+                                                st.write(f"**Aantal rijen in tbody:** {len(_cl_tbody.find_all('tr'))}")
+                                                for _cli, _clr in enumerate(_cl_rows):
+                                                    with st.expander(f"Rij {_cli + 1} HTML"):
+                                                        st.code(str(_clr)[:2000], language="html")
+                                            else:
+                                                st.warning("Geen 'results' tabel gevonden. Alle tabellen op de pagina:")
+                                                for _clt in _cl_soup.find_all('table'):
+                                                    st.code(f"class={_clt.get('class')} | eerste 200 chars: {str(_clt)[:200]}", language="html")
+                                        except Exception as _cl_e:
+                                            st.error(str(_cl_e))
+
         elif _beh_pw:
             st.error("Onjuist wachtwoord.")
 
