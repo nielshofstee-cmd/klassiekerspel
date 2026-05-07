@@ -1633,7 +1633,8 @@ if st.query_params.get("logout") == "1":
 
 # Haal e-mailadres op van ingelogde speler (uit credentials sheet)
 _creds_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
-_speler_row = _creds_src[_creds_src['speler_naam'] == ingelogd_speler]
+_speler_row = (_creds_src[_creds_src['speler_naam'] == ingelogd_speler]
+               if 'speler_naam' in _creds_src.columns else pd.DataFrame())
 ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
 
 # Actief spel bepalen voor badge in nav
