@@ -1095,8 +1095,17 @@ def scrape_pcs_resultaat(url, limit=None):
         if soup.title and 'just a moment' in soup.title.text.lower():
             return False, "Cloudflare blokkade. Probeer later opnieuw."
 
-        table = soup.find('table', class_=lambda c: c and 'results' in c)
-        if not table:
+        results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
+        if results_tables:
+            # Pick the table with the most rider rows — avoids grabbing a small
+            # stage-result preview that appears above the classification table on
+            # GC / points / KOM / youth pages.
+            def _rider_row_count(t):
+                return sum(1 for tr in (t.find('tbody') or t).find_all('tr')
+                           if tr.find('a', href=lambda h: h and 'rider/' in h))
+            table = max(results_tables, key=_rider_row_count)
+        else:
+            table = None
             for t in soup.find_all('table'):
                 if t.find('a', href=lambda h: h and 'rider/' in h):
                     table = t
