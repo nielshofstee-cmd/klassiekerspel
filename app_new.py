@@ -1107,23 +1107,21 @@ def scrape_pcs_resultaat(url, limit=None):
                     table = t
                     break
         elif _suffix:
-            # GC and points are always at fixed positions (confirmed across stages).
-            # Youth is identified by its "Youth day classification" heading.
-            # KOM is always the table immediately before the youth table.
             if _suffix in ('gc', 'points'):
                 _idx = {'gc': 1, 'points': 2}[_suffix]
                 table = results_tables[_idx] if _idx < len(results_tables) else None
             else:
-                _youth_i = None
-                for _i, _t in enumerate(results_tables):
-                    _ph = _t.find_previous(['h1', 'h2', 'h3', 'h4'])
-                    if _ph and 'youth' in _ph.get_text().lower():
-                        _youth_i = _i
-                        break
-                if _suffix == 'youth':
-                    table = results_tables[_youth_i] if _youth_i is not None else None
-                else:  # kom: table immediately before the youth table
-                    table = results_tables[_youth_i - 1] if _youth_i and _youth_i > 0 else None
+                def _last_table_with_heading(keyword):
+                    _found = None
+                    for _t in results_tables:
+                        _ph = _t.find_previous(['h1', 'h2', 'h3', 'h4'])
+                        if _ph and keyword in _ph.get_text().lower():
+                            _found = _t
+                    return _found
+                if _suffix == 'kom':
+                    table = _last_table_with_heading('points at finish')
+                else:  # youth
+                    table = _last_table_with_heading('kom sprint')
             if not table:
                 return False, f"Geen {_suffix.upper()}-klassementstabel gevonden op deze pagina (mogelijk nog niet beschikbaar)."
         else:
