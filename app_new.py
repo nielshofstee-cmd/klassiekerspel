@@ -1137,37 +1137,8 @@ def scrape_pcs_resultaat(url, limit=None):
 def scrape_pcs_oranje_schildjes(url):
     """
     Scrapt renners met een oranje schild van een PCS etappe-pagina.
-    Detectie via:
-      1. Trefwoord 'aggressive'/'breakaway'/'escape' in class, title of href
-      2. Strikte oranje hex-kleur (R=E-F, G=40-8F, B=00-3F) in style/src/href
-    Zoekt ALLEEN in directe attributen van het element, niet in volledige HTML.
-    Andere jerseys en gele kaarten worden uitgesloten op class/title-inhoud.
+    PCS markeert het oranje schild met <div class="svg_shield">.
     """
-    import re as _re_sh
-
-    # Strikte oranje kleur: hoge R, middelmatige G (hex 4-8), lage B (hex 0-3)
-    # Matcht #F47C20, #FF6600, #E87722 — maar NIET roze, paars, wit, geel, blauw
-    _RE_ORANJE_KLEUR = _re_sh.compile(
-        r'#[eEfF][4-8][0-9a-fA-F][0-3][0-9a-fA-F]{2}'   # 6-cijferig
-        r'|#[eEfF][4-8][0-3]',                            # 3-cijferig
-        _re_sh.I
-    )
-
-    # Trefwoorden die specifiek wijzen op oranje schild
-    _ORANJE_KW = ('aggressive', 'breakaway', 'escape', 'orange')
-
-    # Class/title-patronen voor andere klassementsjerseys en kaarten → overslaan
-    _EXCLUDE = (
-        '-gc', '--gc', '_gc', 'general-classification',
-        '-points', '--points', '_points', '-sprint', '--sprint',
-        '-kom', '--kom', '_kom', '-mountain', '--mountain',
-        '-youth', '--youth', '_youth', '-white', '--white',
-        '-pink', '--pink', '-red', '--red',
-        'gc-leader', 'points-leader', 'kom-leader', 'youth-leader',
-        'maillot', 'maglia',
-        'card-yellow', 'yellow-card', 'card--yellow', 'avertissement',
-    )
-
     try:
         resp = _pcs_get(url.rstrip('/') + '/')
         soup = BeautifulSoup(resp.text, 'html.parser')
@@ -1206,44 +1177,9 @@ def scrape_pcs_oranje_schildjes(url):
                 (td for td in cols if td.find('a', href=lambda h: h and 'rider/' in h)),
                 None
             )
-            has_shield = False
-            if rider_cell:
-                for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em', 'use']):
-                    cls_str   = ' '.join(elem.get('class', [])).lower()
-                    title_str = elem.get('title', '').lower()
-                    alt_str   = elem.get('alt', '').lower()
-                    href_str  = (elem.get('href') or elem.get('xlink:href') or '').lower()
-                    style_str = elem.get('style', '').lower()
-                    src_str   = elem.get('src', '').lower()
-
-                    attr_text = f"{cls_str} {title_str} {alt_str} {href_str} {src_str}"
-
-                    # Sla over: dit is duidelijk een andere jersey of kaart
-                    if any(ex in attr_text for ex in _EXCLUDE):
-                        continue
-
-                    # Positief via trefwoord in class/title/alt/href/src
-                    if any(kw in attr_text for kw in _ORANJE_KW):
-                        has_shield = True
-                        break
-
-                    # Positief via oranje kleur in directe style/src/href
-                    color_src = f"{style_str} {src_str} {href_str}"
-                    if _RE_ORANJE_KLEUR.search(color_src):
-                        has_shield = True
-                        break
-
-                    # Positief via oranje kleur in fill/stroke van SVG child-elementen
-                    # (PCS zet kleur vaak op <path fill="#F47C20"> binnenin de SVG)
-                    for child in elem.find_all(['path', 'circle', 'rect', 'polygon', 'g']):
-                        child_fill   = child.get('fill', '')
-                        child_stroke = child.get('stroke', '')
-                        child_style  = child.get('style', '')
-                        if _RE_ORANJE_KLEUR.search(f"{child_fill} {child_stroke} {child_style}"):
-                            has_shield = True
-                            break
-                    if has_shield:
-                        break
+            has_shield = bool(
+                rider_cell and rider_cell.find('div', class_='svg_shield')
+            )
 
             if has_shield:
                 data.append({'rank': rank, 'rider': rider, 'team': team})
