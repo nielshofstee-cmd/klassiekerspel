@@ -1097,11 +1097,8 @@ def scrape_pcs_resultaat(url, limit=None):
 
         _url_clean = url.rstrip('/').lower()
         results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
-
-        # Fixed table positions on PCS classification pages:
-        # index 0 = stage result, index 1 = GC, index 2 = points
-        _table_index = {'gc': 1, 'points': 2}
-        _suffix = next((s for s in ('gc', 'points') if _url_clean.endswith('-' + s)), None)
+        _suffix = next((s for s in ('gc', 'points', 'kom', 'youth')
+                        if _url_clean.endswith('-' + s)), None)
 
         if not results_tables:
             table = None
@@ -1109,8 +1106,17 @@ def scrape_pcs_resultaat(url, limit=None):
                 if t.find('a', href=lambda h: h and 'rider/' in h):
                     table = t
                     break
-        elif _suffix and _table_index[_suffix] < len(results_tables):
-            table = results_tables[_table_index[_suffix]]
+        elif _suffix:
+            # Cumulative classification tables have hide_td6 but NOT hide_td2.
+            # Day-result tables (intermediate sprints/climbs) always have hide_td2.
+            # This filter gives exactly: [GC, points, KOM, youth] in order.
+            _cls_tables = [
+                t for t in results_tables
+                if 'hide_td6' in (t.get('class') or [])
+                and 'hide_td2' not in (t.get('class') or [])
+            ]
+            _idx = {'gc': 0, 'points': 1, 'kom': 2, 'youth': 3}[_suffix]
+            table = _cls_tables[_idx] if _idx < len(_cls_tables) else results_tables[0]
         else:
             table = results_tables[0]
 
@@ -2906,28 +2912,27 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             if _cl_tables:
                                                 def _cl_rider_count(t):
                                                     return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
-                                                st.write("**Heading + rider-links per tabel:**")
+                                                st.write("**Alle results-tabellen (heading | class | rider-links):**")
                                                 for _ci, _ct in enumerate(_cl_tables):
                                                     _cc = _cl_rider_count(_ct)
                                                     _prev_h = _ct.find_previous(['h1','h2','h3','h4'])
                                                     _h_txt = _prev_h.get_text().strip() if _prev_h else '(geen heading)'
                                                     st.write(f"  Tabel {_ci+1}: heading=`{_h_txt}` | class=`{_ct.get('class')}` | {_cc} rider-links")
-                                                # Replicate the same selection logic as scrape_pcs_resultaat()
-                                                _cl_kw_map = {'gc':['general','overall'],'points':['points','sprint'],'kom':['mountain','berg','kom','climb'],'youth':['young','youth','white','jongeren']}
+                                                # Replicate selection logic: filter on hide_td6 without hide_td2
                                                 _cl_suffix = next((s for s in ('gc','points','kom','youth') if _cl_url_lower.endswith('-'+s)), None)
-                                                _cl_kws = _cl_kw_map.get(_cl_suffix, [])
-                                                _cl_tbl = None
-                                                if _cl_kws:
-                                                    for _ct2 in _cl_tables:
-                                                        _ph = _ct2.find_previous(['h1','h2','h3','h4'])
-                                                        if _ph and any(kw in _ph.get_text().lower() for kw in _cl_kws):
-                                                            _cl_tbl = _ct2
-                                                            break
-                                                if not _cl_tbl:
-                                                    _cl_tbl = max(_cl_tables, key=_cl_rider_count)
-                                                    st.warning("Heading niet gevonden — fallback op grootste tabel.")
-                                                else:
-                                                    st.success(f"Heading-match gevonden voor '{_cl_suffix}'")
+                                                _cl_filtered = [
+                                                    t for t in _cl_tables
+                                                    if 'hide_td6' in (t.get('class') or [])
+                                                    and 'hide_td2' not in (t.get('class') or [])
+                                                ]
+                                                st.write(f"**Gefilterde klass.-tabellen (hide_td6 ∧ ¬hide_td2):** {len(_cl_filtered)} stuks")
+                                                for _ci2, _ct2 in enumerate(_cl_filtered):
+                                                    _lbl = ['GC','Points','KOM','Youth'][_ci2] if _ci2 < 4 else str(_ci2)
+                                                    st.write(f"  → [{_lbl}] class=`{_ct2.get('class')}` | {_cl_rider_count(_ct2)} rider-links")
+                                                _cl_idx = {'gc':0,'points':1,'kom':2,'youth':3}.get(_cl_suffix, 0)
+                                                _cl_tbl = _cl_filtered[_cl_idx] if _cl_idx < len(_cl_filtered) else _cl_tables[0]
+                                                if _cl_suffix:
+                                                    st.success(f"Selecteert gefilterde tabel index {_cl_idx} voor '{_cl_suffix}'")
                                                 _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
                                                 _cl_rows = _cl_tbody.find_all('tr')[:5]
                                                 st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
