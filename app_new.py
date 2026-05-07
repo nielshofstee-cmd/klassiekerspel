@@ -592,6 +592,9 @@ hr {
         flex-direction: column !important;
     }
 }
+
+/* Verberg "Clear all" knop op multiselect */
+button[aria-label="Clear all"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
