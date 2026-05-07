@@ -1096,11 +1096,12 @@ def scrape_pcs_resultaat(url, limit=None):
             return False, "Cloudflare blokkade. Probeer later opnieuw."
 
         _url_clean = url.rstrip('/').lower()
-        _is_classification = any(_url_clean.endswith(s) for s in ('-gc', '-points', '-kom', '-youth'))
         results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
 
-        def _rider_link_count(t):
-            return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
+        # Fixed table positions on PCS classification pages:
+        # index 0 = stage result, index 1 = GC, index 2 = points
+        _table_index = {'gc': 1, 'points': 2}
+        _suffix = next((s for s in ('gc', 'points') if _url_clean.endswith('-' + s)), None)
 
         if not results_tables:
             table = None
@@ -1108,32 +1109,10 @@ def scrape_pcs_resultaat(url, limit=None):
                 if t.find('a', href=lambda h: h and 'rider/' in h):
                     table = t
                     break
-        elif not _is_classification:
-            table = results_tables[0]
+        elif _suffix and _table_index[_suffix] < len(results_tables):
+            table = results_tables[_table_index[_suffix]]
         else:
-            # Each section on PCS classification pages is preceded by a heading.
-            # Match the heading text to the URL type for robust table selection.
-            _kw_map = {
-                'gc':     ['general', 'overall'],
-                'points': ['points', 'sprint'],
-                'kom':    ['mountain', 'berg', 'kom', 'climb'],
-                'youth':  ['young', 'youth', 'white', 'jongeren'],
-            }
-            _suffix = next((s for s in ('gc', 'points', 'kom', 'youth')
-                            if _url_clean.endswith('-' + s)), None)
-            _keywords = _kw_map.get(_suffix, [])
-
-            table = None
-            if _keywords:
-                for _t in results_tables:
-                    _prev_h = _t.find_previous(['h1', 'h2', 'h3', 'h4'])
-                    if _prev_h and any(kw in _prev_h.get_text().lower() for kw in _keywords):
-                        table = _t
-                        break
-
-            # Fallback: largest table by rider-link count
-            if not table:
-                table = max(results_tables, key=_rider_link_count)
+            table = results_tables[0]
 
         if not table:
             return False, "Geen resultatentabel gevonden op deze pagina."
