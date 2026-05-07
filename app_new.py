@@ -1098,21 +1098,42 @@ def scrape_pcs_resultaat(url, limit=None):
         _url_clean = url.rstrip('/').lower()
         _is_classification = any(_url_clean.endswith(s) for s in ('-gc', '-points', '-kom', '-youth'))
         results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
-        if results_tables:
-            if _is_classification:
-                # With many 'results' tables on the page, the classification
-                # table is the one with the most rider links.
-                def _rider_link_count(t):
-                    return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
-                table = max(results_tables, key=_rider_link_count)
-            else:
-                table = results_tables[0]
-        else:
+
+        def _rider_link_count(t):
+            return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
+
+        if not results_tables:
             table = None
             for t in soup.find_all('table'):
                 if t.find('a', href=lambda h: h and 'rider/' in h):
                     table = t
                     break
+        elif not _is_classification:
+            table = results_tables[0]
+        else:
+            # Each section on PCS classification pages is preceded by a heading.
+            # Match the heading text to the URL type for robust table selection.
+            _kw_map = {
+                'gc':     ['general', 'overall'],
+                'points': ['points', 'sprint'],
+                'kom':    ['mountain', 'berg', 'kom', 'climb'],
+                'youth':  ['young', 'youth', 'white', 'jongeren'],
+            }
+            _suffix = next((s for s in ('gc', 'points', 'kom', 'youth')
+                            if _url_clean.endswith('-' + s)), None)
+            _keywords = _kw_map.get(_suffix, [])
+
+            table = None
+            if _keywords:
+                for _t in results_tables:
+                    _prev_h = _t.find_previous(['h1', 'h2', 'h3', 'h4'])
+                    if _prev_h and any(kw in _prev_h.get_text().lower() for kw in _keywords):
+                        table = _t
+                        break
+
+            # Fallback: largest table by rider-link count
+            if not table:
+                table = max(results_tables, key=_rider_link_count)
 
         if not table:
             return False, "Geen resultatentabel gevonden op deze pagina."
@@ -2906,11 +2927,28 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             if _cl_tables:
                                                 def _cl_rider_count(t):
                                                     return sum(1 for a in t.find_all('a', href=True) if 'rider/' in a['href'])
-                                                _cl_counts = [_cl_rider_count(t) for t in _cl_tables]
-                                                st.write("**Rider-links per tabel:**")
-                                                for _ci, (_ct, _cc) in enumerate(zip(_cl_tables, _cl_counts)):
-                                                    st.write(f"  Tabel {_ci+1}: class=`{_ct.get('class')}` → {_cc} rider-links")
-                                                _cl_tbl = max(_cl_tables, key=_cl_rider_count) if _cl_is_class else _cl_tables[0]
+                                                st.write("**Heading + rider-links per tabel:**")
+                                                for _ci, _ct in enumerate(_cl_tables):
+                                                    _cc = _cl_rider_count(_ct)
+                                                    _prev_h = _ct.find_previous(['h1','h2','h3','h4'])
+                                                    _h_txt = _prev_h.get_text().strip() if _prev_h else '(geen heading)'
+                                                    st.write(f"  Tabel {_ci+1}: heading=`{_h_txt}` | class=`{_ct.get('class')}` | {_cc} rider-links")
+                                                # Replicate the same selection logic as scrape_pcs_resultaat()
+                                                _cl_kw_map = {'gc':['general','overall'],'points':['points','sprint'],'kom':['mountain','berg','kom','climb'],'youth':['young','youth','white','jongeren']}
+                                                _cl_suffix = next((s for s in ('gc','points','kom','youth') if _cl_url_lower.endswith('-'+s)), None)
+                                                _cl_kws = _cl_kw_map.get(_cl_suffix, [])
+                                                _cl_tbl = None
+                                                if _cl_kws:
+                                                    for _ct2 in _cl_tables:
+                                                        _ph = _ct2.find_previous(['h1','h2','h3','h4'])
+                                                        if _ph and any(kw in _ph.get_text().lower() for kw in _cl_kws):
+                                                            _cl_tbl = _ct2
+                                                            break
+                                                if not _cl_tbl:
+                                                    _cl_tbl = max(_cl_tables, key=_cl_rider_count)
+                                                    st.warning("Heading niet gevonden — fallback op grootste tabel.")
+                                                else:
+                                                    st.success(f"Heading-match gevonden voor '{_cl_suffix}'")
                                                 _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
                                                 _cl_rows = _cl_tbody.find_all('tr')[:5]
                                                 st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
