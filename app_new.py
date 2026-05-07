@@ -1134,16 +1134,31 @@ def scrape_pcs_resultaat(url, limit=None):
 def scrape_pcs_oranje_schildjes(url):
     """
     Scrapt renners met een oranje schild van een PCS etappe-pagina.
-    Zoekt naar SVG/span/icon-elementen in de renner-cel met oranje kleur-kenmerken.
-    Geeft (True, list_of_dicts) of (False, foutmelding) terug.
+    Alleen écht oranje iconen: class/title met aggressive/breakaway/escape/orange,
+    of hex-kleur met hoge R, middelmatige G (4-B) en lage B → oranjebereik.
+    Roze/rood/wit/geel/blauw jerseys en gele kaarten worden uitgesloten.
     """
     import re as _re_sh
+
+    # Oranje hex: R=E-F, G=40-BF (hex 4-B), B=willekeurig
+    # Hiermee valt roze (#e40d5f, G=0D), rood (#e30613, G=06),
+    # geel (#ffd700, G=D7) en wit (#fff, G=F) buiten het bereik.
     _RE_ORANJE = _re_sh.compile(
-        r'(shield|escape|breakaway|attack|aggressive|orange|'
-        r'#[eEfF][0-9a-fA-F]{5}|#[eEfF][0-9a-fA-F]{3}|'
-        r'fill\s*[=:]\s*["\']?\s*#[eEfF])',
+        r'(aggressive|breakaway|escape|orange'
+        r'|#[eEfF][4-9a-bA-B][0-9a-fA-F]{4}'     # 6-cijferig oranje hex
+        r'|#[eEfF][4-9a-bA-B][0-9a-fA-F]'         # 3-cijferig oranje hex
+        r'|fill[=:\s]+["\']?#[eEfF][4-9a-bA-B])',  # SVG fill in oranjebereik
         _re_sh.I
     )
+
+    # Class/title-patronen die duiden op niet-oranje klassementsjerseys of kaarten
+    _EXCLUDE = ('jersey-gc', 'jersey-leader', 'jersey-points', 'jersey-kom',
+                'jersey-youth', 'jersey-white', 'jersey-pink', 'jersey-red',
+                'gc-leader', 'points-leader', 'kom-leader', 'youth-leader',
+                'card-yellow', 'yellow-card', 'card--yellow', 'avertissement',
+                'icon-gc', 'icon-points', 'icon-kom', 'icon-youth',
+                'maillot', 'maglia', 'jersey')
+
     try:
         resp = _pcs_get(url.rstrip('/') + '/')
         soup = BeautifulSoup(resp.text, 'html.parser')
@@ -1182,9 +1197,12 @@ def scrape_pcs_oranje_schildjes(url):
             has_shield = False
             if rider_cell:
                 for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em']):
-                    cls_str = ' '.join(elem.get('class', []))
+                    cls_str = ' '.join(elem.get('class', [])).lower()
+                    title_str = elem.get('title', '').lower()
+                    # Sla over als dit een andere jersey of kaart is
+                    if any(ex in cls_str or ex in title_str for ex in _EXCLUDE):
+                        continue
                     style_str = elem.get('style', '')
-                    title_str = elem.get('title', '')
                     src_str = elem.get('src', '')
                     combined = f"{cls_str} {style_str} {title_str} {src_str} {str(elem)[:300]}"
                     if _RE_ORANJE.search(combined):
