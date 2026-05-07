@@ -1633,7 +1633,8 @@ if st.query_params.get("logout") == "1":
 
 # Haal e-mailadres op van ingelogde speler (uit credentials sheet)
 _creds_src = creds_all if (not creds_all.empty and 'email' in creds_all.columns) else s_all
-_speler_row = _creds_src[_creds_src['speler_naam'] == ingelogd_speler]
+_speler_row = (_creds_src[_creds_src['speler_naam'] == ingelogd_speler]
+               if 'speler_naam' in _creds_src.columns else pd.DataFrame())
 ingelogd_email = _speler_row['email'].iloc[0] if not _speler_row.empty and 'email' in _speler_row.columns else ""
 
 # Actief spel bepalen voor badge in nav
@@ -2767,6 +2768,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         st.divider()
 
                         # Individual scrape buttons
+                        _url_etappe_val = next((v for k, _, v in _available if k == "url_etappe"), "")
                         for _url_key, _url_label, _url_val in _available:
                             _type_key = _url_key.replace("url_", "")
                             _sc_limit = None if _type_key == "etappe" else 10
@@ -2782,8 +2784,22 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                 else:
                                     st.error(f"Scrapen mislukt: {_result}")
 
+                        if _url_etappe_val:
+                            if st.button("🟠 Scrape oranje schildjes", key=f"scrape_schild_{_spel_param}_{_gekozen_etappe}"):
+                                with st.spinner("Scrapen van oranje schildjes..."):
+                                    _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
+                                if _sh_ok:
+                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
+                                    if _sv_ok:
+                                        st.success(f"✅ {_sv_msg}")
+                                        st.dataframe(_sh_result, use_container_width=True)
+                                    else:
+                                        st.error(f"Opslaan mislukt: {_sv_msg}")
+                                else:
+                                    st.error(f"Scrapen mislukt: {_sh_result}")
+
                         st.divider()
-                        # Scrape all button
+                        # Scrape all button (inclusief oranje schildjes)
                         if st.button(f"🔄 Scrape alle URLs (etappe {_gekozen_etappe})", key=f"scrape_all_{_spel_param}_{_gekozen_etappe}"):
                             _all_ok = True
                             for _url_key, _url_label, _url_val in _available:
@@ -2801,30 +2817,26 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                 else:
                                     st.error(f"❌ {_url_label} scrapen mislukt: {_result}")
                                     _all_ok = False
-                            if _all_ok:
-                                st.balloons()
-
-                        st.divider()
-
-                        # Oranje schildjes
-                        _url_etappe_val = next((v for k, _, v in _available if k == "url_etappe"), "")
-                        if _url_etappe_val:
-                            st.subheader("🟠 Oranje schildjes")
-                            st.caption("Scrapt alleen renners met een oranje schild (vlucht/aanval) van de etappe-pagina.")
-                            if st.button("🟠 Scrape oranje schildjes", key=f"scrape_schild_{_spel_param}_{_gekozen_etappe}"):
+                            if _url_etappe_val:
                                 with st.spinner("Scrapen van oranje schildjes..."):
                                     _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
                                 if _sh_ok:
                                     _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
                                     if _sv_ok:
-                                        st.success(f"✅ {_sv_msg}")
-                                        st.dataframe(_sh_result, use_container_width=True)
+                                        st.success(f"✅ Oranje schildjes: {_sv_msg}")
                                     else:
-                                        st.error(f"Opslaan mislukt: {_sv_msg}")
+                                        st.error(f"❌ Oranje schildjes opslaan mislukt: {_sv_msg}")
+                                        _all_ok = False
                                 else:
-                                    st.error(f"Scrapen mislukt: {_sh_result}")
+                                    st.error(f"❌ Oranje schildjes scrapen mislukt: {_sh_result}")
+                                    _all_ok = False
+                            if _all_ok:
+                                st.balloons()
 
-                            with st.expander("🔍 Debug: bekijk ruwe HTML van eerste rijen"):
+                        st.divider()
+
+                        with st.expander("🔍 Debug: bekijk ruwe HTML van eerste rijen"):
+                            if _url_etappe_val:
                                 if st.button("Haal HTML op", key=f"debug_html_{_spel_param}_{_gekozen_etappe}"):
                                     with st.spinner("HTML ophalen..."):
                                         _db_ok, _db_rows = debug_pcs_row_html(_url_etappe_val, max_rows=3)
@@ -2834,6 +2846,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             st.code(_row_html, language="html")
                                     else:
                                         st.error(_db_rows)
+                            else:
+                                st.info("Geen etappe-URL geconfigureerd.")
 
         elif _beh_pw:
             st.error("Onjuist wachtwoord.")
