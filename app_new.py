@@ -1153,8 +1153,8 @@ def scrape_pcs_oranje_schildjes(url):
         _re_sh.I
     )
 
-    # Trefwoorden die specifiek wijzen op oranje schild (alleen in class/title/href)
-    _ORANJE_KW = ('aggressive', 'breakaway', 'escape')
+    # Trefwoorden die specifiek wijzen op oranje schild
+    _ORANJE_KW = ('aggressive', 'breakaway', 'escape', 'orange')
 
     # Class/title-patronen voor andere klassementsjerseys en kaarten → overslaan
     _EXCLUDE = (
@@ -1209,7 +1209,6 @@ def scrape_pcs_oranje_schildjes(url):
             has_shield = False
             if rider_cell:
                 for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em', 'use']):
-                    # Verzamel alleen directe attributen (NIET volledige HTML)
                     cls_str   = ' '.join(elem.get('class', [])).lower()
                     title_str = elem.get('title', '').lower()
                     alt_str   = elem.get('alt', '').lower()
@@ -1217,21 +1216,33 @@ def scrape_pcs_oranje_schildjes(url):
                     style_str = elem.get('style', '').lower()
                     src_str   = elem.get('src', '').lower()
 
-                    attr_text = f"{cls_str} {title_str} {alt_str} {href_str}"
+                    attr_text = f"{cls_str} {title_str} {alt_str} {href_str} {src_str}"
 
                     # Sla over: dit is duidelijk een andere jersey of kaart
                     if any(ex in attr_text for ex in _EXCLUDE):
                         continue
 
-                    # Positief via trefwoord in class/title/alt/href
+                    # Positief via trefwoord in class/title/alt/href/src
                     if any(kw in attr_text for kw in _ORANJE_KW):
                         has_shield = True
                         break
 
-                    # Positief via oranje kleur in style/src/href
+                    # Positief via oranje kleur in directe style/src/href
                     color_src = f"{style_str} {src_str} {href_str}"
                     if _RE_ORANJE_KLEUR.search(color_src):
                         has_shield = True
+                        break
+
+                    # Positief via oranje kleur in fill/stroke van SVG child-elementen
+                    # (PCS zet kleur vaak op <path fill="#F47C20"> binnenin de SVG)
+                    for child in elem.find_all(['path', 'circle', 'rect', 'polygon', 'g']):
+                        child_fill   = child.get('fill', '')
+                        child_stroke = child.get('stroke', '')
+                        child_style  = child.get('style', '')
+                        if _RE_ORANJE_KLEUR.search(f"{child_fill} {child_stroke} {child_style}"):
+                            has_shield = True
+                            break
+                    if has_shield:
                         break
 
             if has_shield:
