@@ -592,6 +592,9 @@ hr {
         flex-direction: column !important;
     }
 }
+
+/* Verberg "Clear all" knop op multiselect */
+button[aria-label="Clear all"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1134,16 +1137,37 @@ def scrape_pcs_resultaat(url, limit=None):
 def scrape_pcs_oranje_schildjes(url):
     """
     Scrapt renners met een oranje schild van een PCS etappe-pagina.
-    Zoekt naar SVG/span/icon-elementen in de renner-cel met oranje kleur-kenmerken.
-    Geeft (True, list_of_dicts) of (False, foutmelding) terug.
+    Detectie via:
+      1. Trefwoord 'aggressive'/'breakaway'/'escape' in class, title of href
+      2. Strikte oranje hex-kleur (R=E-F, G=40-8F, B=00-3F) in style/src/href
+    Zoekt ALLEEN in directe attributen van het element, niet in volledige HTML.
+    Andere jerseys en gele kaarten worden uitgesloten op class/title-inhoud.
     """
     import re as _re_sh
-    _RE_ORANJE = _re_sh.compile(
-        r'(shield|escape|breakaway|attack|aggressive|orange|'
-        r'#[eEfF][0-9a-fA-F]{5}|#[eEfF][0-9a-fA-F]{3}|'
-        r'fill\s*[=:]\s*["\']?\s*#[eEfF])',
+
+    # Strikte oranje kleur: hoge R, middelmatige G (hex 4-8), lage B (hex 0-3)
+    # Matcht #F47C20, #FF6600, #E87722 — maar NIET roze, paars, wit, geel, blauw
+    _RE_ORANJE_KLEUR = _re_sh.compile(
+        r'#[eEfF][4-8][0-9a-fA-F][0-3][0-9a-fA-F]{2}'   # 6-cijferig
+        r'|#[eEfF][4-8][0-3]',                            # 3-cijferig
         _re_sh.I
     )
+
+    # Trefwoorden die specifiek wijzen op oranje schild (alleen in class/title/href)
+    _ORANJE_KW = ('aggressive', 'breakaway', 'escape')
+
+    # Class/title-patronen voor andere klassementsjerseys en kaarten → overslaan
+    _EXCLUDE = (
+        '-gc', '--gc', '_gc', 'general-classification',
+        '-points', '--points', '_points', '-sprint', '--sprint',
+        '-kom', '--kom', '_kom', '-mountain', '--mountain',
+        '-youth', '--youth', '_youth', '-white', '--white',
+        '-pink', '--pink', '-red', '--red',
+        'gc-leader', 'points-leader', 'kom-leader', 'youth-leader',
+        'maillot', 'maglia',
+        'card-yellow', 'yellow-card', 'card--yellow', 'avertissement',
+    )
+
     try:
         resp = _pcs_get(url.rstrip('/') + '/')
         soup = BeautifulSoup(resp.text, 'html.parser')
@@ -1178,18 +1202,38 @@ def scrape_pcs_oranje_schildjes(url):
             if not rider:
                 continue
 
-            rider_cell = next((td for td in cols if td.find('a', href=lambda h: h and 'rider/' in h)), None)
+            rider_cell = next(
+                (td for td in cols if td.find('a', href=lambda h: h and 'rider/' in h)),
+                None
+            )
             has_shield = False
             if rider_cell:
-                for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em']):
-                    cls_str = ' '.join(elem.get('class', []))
-                    style_str = elem.get('style', '')
-                    title_str = elem.get('title', '')
-                    src_str = elem.get('src', '')
-                    combined = f"{cls_str} {style_str} {title_str} {src_str} {str(elem)[:300]}"
-                    if _RE_ORANJE.search(combined):
+                for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em', 'use']):
+                    # Verzamel alleen directe attributen (NIET volledige HTML)
+                    cls_str   = ' '.join(elem.get('class', [])).lower()
+                    title_str = elem.get('title', '').lower()
+                    alt_str   = elem.get('alt', '').lower()
+                    href_str  = (elem.get('href') or elem.get('xlink:href') or '').lower()
+                    style_str = elem.get('style', '').lower()
+                    src_str   = elem.get('src', '').lower()
+
+                    attr_text = f"{cls_str} {title_str} {alt_str} {href_str}"
+
+                    # Sla over: dit is duidelijk een andere jersey of kaart
+                    if any(ex in attr_text for ex in _EXCLUDE):
+                        continue
+
+                    # Positief via trefwoord in class/title/alt/href
+                    if any(kw in attr_text for kw in _ORANJE_KW):
                         has_shield = True
                         break
+
+                    # Positief via oranje kleur in style/src/href
+                    color_src = f"{style_str} {src_str} {href_str}"
+                    if _RE_ORANJE_KLEUR.search(color_src):
+                        has_shield = True
+                        break
+
             if has_shield:
                 data.append({'rank': rank, 'rider': rider, 'team': team})
 
@@ -1201,7 +1245,10 @@ def scrape_pcs_oranje_schildjes(url):
 
 
 def debug_pcs_row_html(url, max_rows=5):
-    """Geeft de ruwe HTML van de eerste max_rows rijen van de PCS resultaten tabel."""
+    """
+    Geeft per rij de ruwe HTML + alle icon-elementen met hun attributen,
+    zodat je kunt zien welke class/style/title/href PCS gebruikt.
+    """
     try:
         resp = _pcs_get(url.rstrip('/') + '/')
         soup = BeautifulSoup(resp.text, 'html.parser')
@@ -1216,8 +1263,26 @@ def debug_pcs_row_html(url, max_rows=5):
         if not table:
             return False, "Geen tabel gevonden."
         tbody = table.find('tbody') or table
-        rows = [str(r) for r in tbody.find_all('tr')[:max_rows] if r.find_all('td')]
-        return True, rows
+        out = []
+        for row in tbody.find_all('tr')[:max_rows]:
+            if not row.find_all('td'):
+                continue
+            rider_cell = next(
+                (td for td in row.find_all('td')
+                 if td.find('a', href=lambda h: h and 'rider/' in h)),
+                None
+            )
+            icons_info = []
+            if rider_cell:
+                for elem in rider_cell.find_all(['svg', 'span', 'i', 'img', 'b', 'em', 'use']):
+                    attrs = {k: v for k, v in elem.attrs.items()}
+                    if attrs:
+                        icons_info.append(f"<{elem.name} {attrs}>")
+            out.append({
+                'html':  str(row),
+                'icons': icons_info,
+            })
+        return True, out
     except Exception as e:
         return False, str(e)
 
@@ -2835,15 +2900,22 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                         st.divider()
 
-                        with st.expander("🔍 Debug: bekijk ruwe HTML van eerste rijen"):
+                        with st.expander("🔍 Debug: bekijk icon-attributen van eerste rijen"):
                             if _url_etappe_val:
                                 if st.button("Haal HTML op", key=f"debug_html_{_spel_param}_{_gekozen_etappe}"):
                                     with st.spinner("HTML ophalen..."):
-                                        _db_ok, _db_rows = debug_pcs_row_html(_url_etappe_val, max_rows=3)
+                                        _db_ok, _db_rows = debug_pcs_row_html(_url_etappe_val, max_rows=5)
                                     if _db_ok:
-                                        for _i_db, _row_html in enumerate(_db_rows):
+                                        for _i_db, _row_data in enumerate(_db_rows):
                                             st.markdown(f"**Rij {_i_db + 1}:**")
-                                            st.code(_row_html, language="html")
+                                            if _row_data['icons']:
+                                                st.write("Icon-elementen en hun attributen:")
+                                                for _ic in _row_data['icons']:
+                                                    st.code(_ic)
+                                            else:
+                                                st.write("_(geen icon-elementen gevonden in renner-cel)_")
+                                            with st.expander(f"Volledige HTML rij {_i_db + 1}"):
+                                                st.code(_row_data['html'], language="html")
                                     else:
                                         st.error(_db_rows)
                             else:
