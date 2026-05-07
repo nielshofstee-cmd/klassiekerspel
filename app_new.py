@@ -1107,16 +1107,22 @@ def scrape_pcs_resultaat(url, limit=None):
                     table = t
                     break
         elif _suffix:
-            # Cumulative classification tables have hide_td6 but NOT hide_td2.
+            # Table 0 is always the stage result (even on TTT pages the stage
+            # result table is first). Skip it, then filter the rest:
+            # cumulative classification tables have hide_td6 but NOT hide_td2.
             # Day-result tables (intermediate sprints/climbs) always have hide_td2.
-            # This filter gives exactly: [GC, points, KOM, youth] in order.
+            # This gives [GC, points, KOM, youth] in order regardless of how many
+            # intermediate tables appear.
             _cls_tables = [
-                t for t in results_tables
+                t for t in results_tables[1:]
                 if 'hide_td6' in (t.get('class') or [])
                 and 'hide_td2' not in (t.get('class') or [])
             ]
             _idx = {'gc': 0, 'points': 1, 'kom': 2, 'youth': 3}[_suffix]
-            table = _cls_tables[_idx] if _idx < len(_cls_tables) else results_tables[0]
+            if _idx < len(_cls_tables):
+                table = _cls_tables[_idx]
+            else:
+                return False, f"Geen {_suffix.upper()}-klassementstabel gevonden op deze pagina (mogelijk nog niet beschikbaar)."
         else:
             table = results_tables[0]
 
@@ -2921,7 +2927,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                 # Replicate selection logic: filter on hide_td6 without hide_td2
                                                 _cl_suffix = next((s for s in ('gc','points','kom','youth') if _cl_url_lower.endswith('-'+s)), None)
                                                 _cl_filtered = [
-                                                    t for t in _cl_tables
+                                                    t for t in _cl_tables[1:]
                                                     if 'hide_td6' in (t.get('class') or [])
                                                     and 'hide_td2' not in (t.get('class') or [])
                                                 ]
@@ -2930,9 +2936,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                     _lbl = ['GC','Points','KOM','Youth'][_ci2] if _ci2 < 4 else str(_ci2)
                                                     st.write(f"  → [{_lbl}] class=`{_ct2.get('class')}` | {_cl_rider_count(_ct2)} rider-links")
                                                 _cl_idx = {'gc':0,'points':1,'kom':2,'youth':3}.get(_cl_suffix, 0)
-                                                _cl_tbl = _cl_filtered[_cl_idx] if _cl_idx < len(_cl_filtered) else _cl_tables[0]
-                                                if _cl_suffix:
+                                                if _cl_idx < len(_cl_filtered):
+                                                    _cl_tbl = _cl_filtered[_cl_idx]
                                                     st.success(f"Selecteert gefilterde tabel index {_cl_idx} voor '{_cl_suffix}'")
+                                                else:
+                                                    _cl_tbl = None
+                                                    st.error(f"Niet genoeg gefilterde tabellen voor '{_cl_suffix}' (gevonden: {len(_cl_filtered)}, nodig: index {_cl_idx})")
+                                                if not _cl_tbl:
+                                                    st.stop()
                                                 _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
                                                 _cl_rows = _cl_tbody.find_all('tr')[:5]
                                                 st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
