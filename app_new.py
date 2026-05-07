@@ -1107,16 +1107,25 @@ def scrape_pcs_resultaat(url, limit=None):
                     table = t
                     break
         elif _suffix:
-            # Cumulative classification tables have hide_td6 but NOT hide_td2.
-            # Day-result tables (intermediate sprints/climbs) always have hide_td2.
-            # This filter gives exactly: [GC, points, KOM, youth] in order.
-            _cls_tables = [
-                t for t in results_tables
-                if 'hide_td6' in (t.get('class') or [])
-                and 'hide_td2' not in (t.get('class') or [])
-            ]
-            _idx = {'gc': 0, 'points': 1, 'kom': 2, 'youth': 3}[_suffix]
-            table = _cls_tables[_idx] if _idx < len(_cls_tables) else results_tables[0]
+            # GC and points are always at fixed positions (confirmed across stages).
+            # Youth is identified by its "Youth day classification" heading.
+            # KOM is always the table immediately before the youth table.
+            if _suffix in ('gc', 'points'):
+                _idx = {'gc': 1, 'points': 2}[_suffix]
+                table = results_tables[_idx] if _idx < len(results_tables) else None
+            else:
+                _youth_i = None
+                for _i, _t in enumerate(results_tables):
+                    _ph = _t.find_previous(['h1', 'h2', 'h3', 'h4'])
+                    if _ph and 'youth' in _ph.get_text().lower():
+                        _youth_i = _i
+                        break
+                if _suffix == 'youth':
+                    table = results_tables[_youth_i] if _youth_i is not None else None
+                else:  # kom: table immediately before the youth table
+                    table = results_tables[_youth_i - 1] if _youth_i and _youth_i > 0 else None
+            if not table:
+                return False, f"Geen {_suffix.upper()}-klassementstabel gevonden op deze pagina (mogelijk nog niet beschikbaar)."
         else:
             table = results_tables[0]
 
@@ -2918,21 +2927,30 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                     _prev_h = _ct.find_previous(['h1','h2','h3','h4'])
                                                     _h_txt = _prev_h.get_text().strip() if _prev_h else '(geen heading)'
                                                     st.write(f"  Tabel {_ci+1}: heading=`{_h_txt}` | class=`{_ct.get('class')}` | {_cc} rider-links")
-                                                # Replicate selection logic: filter on hide_td6 without hide_td2
                                                 _cl_suffix = next((s for s in ('gc','points','kom','youth') if _cl_url_lower.endswith('-'+s)), None)
-                                                _cl_filtered = [
-                                                    t for t in _cl_tables
-                                                    if 'hide_td6' in (t.get('class') or [])
-                                                    and 'hide_td2' not in (t.get('class') or [])
-                                                ]
-                                                st.write(f"**Gefilterde klass.-tabellen (hide_td6 ∧ ¬hide_td2):** {len(_cl_filtered)} stuks")
-                                                for _ci2, _ct2 in enumerate(_cl_filtered):
-                                                    _lbl = ['GC','Points','KOM','Youth'][_ci2] if _ci2 < 4 else str(_ci2)
-                                                    st.write(f"  → [{_lbl}] class=`{_ct2.get('class')}` | {_cl_rider_count(_ct2)} rider-links")
-                                                _cl_idx = {'gc':0,'points':1,'kom':2,'youth':3}.get(_cl_suffix, 0)
-                                                _cl_tbl = _cl_filtered[_cl_idx] if _cl_idx < len(_cl_filtered) else _cl_tables[0]
-                                                if _cl_suffix:
-                                                    st.success(f"Selecteert gefilterde tabel index {_cl_idx} voor '{_cl_suffix}'")
+                                                # Replicate selection logic
+                                                if _cl_suffix in ('gc', 'points'):
+                                                    _cl_idx2 = {'gc':1,'points':2}[_cl_suffix]
+                                                    _cl_tbl = _cl_tables[_cl_idx2] if _cl_idx2 < len(_cl_tables) else None
+                                                    if _cl_tbl:
+                                                        st.success(f"Vaste positie index {_cl_idx2} voor '{_cl_suffix}'")
+                                                else:
+                                                    _cl_youth_i = None
+                                                    for _cli2, _ct2 in enumerate(_cl_tables):
+                                                        _ph2 = _ct2.find_previous(['h1','h2','h3','h4'])
+                                                        if _ph2 and 'youth' in _ph2.get_text().lower():
+                                                            _cl_youth_i = _cli2
+                                                            break
+                                                    st.write(f"Youth tabel positie: {_cl_youth_i+1 if _cl_youth_i is not None else 'niet gevonden'}")
+                                                    if _cl_suffix == 'youth':
+                                                        _cl_tbl = _cl_tables[_cl_youth_i] if _cl_youth_i is not None else None
+                                                    else:  # kom
+                                                        _cl_tbl = _cl_tables[_cl_youth_i - 1] if _cl_youth_i and _cl_youth_i > 0 else None
+                                                    if _cl_tbl:
+                                                        st.success(f"Selecteert tabel voor '{_cl_suffix}'")
+                                                if not _cl_tbl:
+                                                    st.error(f"Geen tabel gevonden voor '{_cl_suffix}'")
+                                                    st.stop()
                                                 _cl_tbody = _cl_tbl.find('tbody') or _cl_tbl
                                                 _cl_rows = _cl_tbody.find_all('tr')[:5]
                                                 st.write(f"**Geselecteerde tabel class:** `{_cl_tbl.get('class')}`")
