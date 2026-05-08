@@ -2445,6 +2445,39 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
                 st.metric("Totaal", f"{_tot_tm} punten", help=f"{len(_sp_renners_tm)} renners")
 
+                # Puntenuitsplitsing per renner
+                if _det_tm:
+                    with st.expander("📋 Puntenuitsplitsing per renner"):
+                        _sel_rn = st.selectbox(
+                            "Renner:",
+                            options=sorted({d['renner'] for d in _det_tm}),
+                            key=f"detail_rn_{_spel_param}"
+                        )
+                        _TYPE_NL = {
+                            'etappe': '🏁 Etappe', 'gc': '🏆 GC', 'points': '💚 Punten',
+                            'kom': '🔴 KOM', 'youth': '⬜ Jongeren', 'schildjes': '🟠 Schildjes',
+                            'team_etappe': '👥 Team etappe', 'team_gc': '👥 Team GC',
+                            'team_points': '👥 Team punten', 'team_kom': '👥 Team KOM',
+                            'team_youth': '👥 Team jongeren',
+                        }
+                        _rows_detail = [
+                            {
+                                'Etappe': d['etappe'],
+                                'Type': _TYPE_NL.get(d['type'], d['type']),
+                                'Rank': d['rank'],
+                                'Basis': round(d['punten'] / d['multiplier']) if d.get('multiplier', 1) != 1 else d['punten'],
+                                '×': f"{d.get('multiplier', 1.0):.1f}×" if d.get('multiplier', 1.0) != 1.0 else '—',
+                                'Punten': d['punten'],
+                            }
+                            for d in _det_tm if d['renner'] == _sel_rn
+                        ]
+                        if _rows_detail:
+                            _df_detail = pd.DataFrame(_rows_detail)
+                            st.dataframe(_df_detail, hide_index=True, use_container_width=True)
+                            st.write(f"**Totaal {_sel_rn}:** {sum(r['Punten'] for r in _rows_detail)} punten")
+                        else:
+                            st.info("Geen punten gevonden voor deze renner.")
+
     # =============================================
     # WISSELS
     # =============================================
