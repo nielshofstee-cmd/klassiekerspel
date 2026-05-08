@@ -1309,13 +1309,16 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                     _caps[_c3] = 2.0
             _cap_lkp[_et_k] = _caps
 
-    renner_set = set(mijn_renners)
+    # Case-insensitive lookup: lowercase key → original saved name
+    renner_lower = {r.strip().lower(): r.strip() for r in mijn_renners}
     totaal = 0
     details = []
     for _, row in uit_df.iterrows():
-        rider = row.get('rider', '')
-        if rider not in renner_set:
+        rider_raw = str(row.get('rider', '')).strip()
+        rider_key = rider_raw.lower()
+        if rider_key not in renner_lower:
             continue
+        rider = renner_lower[rider_key]  # use saved name for captain lookup
         type_r = str(row.get('type_result', '')).strip()
         etappe_str = str(row.get('etappe', ''))
         multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0)
@@ -1354,10 +1357,10 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                 })
 
     # ── Teampunten ────────────────────────────────────────────────────────────
-    # Build rider→team from all rows in uit_df (full stage result has all teams)
+    # Build lowercase rider→team from all rows in uit_df
     _rider_team = {}
     for _, _tr in uit_df.iterrows():
-        _rn = str(_tr.get('rider', '')).strip()
+        _rn = str(_tr.get('rider', '')).strip().lower()
         _tm = str(_tr.get('team', '')).strip()
         if _rn and _tm:
             _rider_team[_rn] = _tm
@@ -1378,17 +1381,17 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
 
     for (_et, _t), (_leader, _leader_team) in _rank1_lkp.items():
         _bonus = _TEAM_BONUS[_t]
-        for _rider in renner_set:
-            if _rider == _leader:
+        for _rider_saved in renner_lower.values():
+            if _rider_saved.lower() == _leader.lower():
                 continue
-            if _rider_team.get(_rider, '') == _leader_team:
-                _mul = _cap_lkp.get(_et, {}).get(_rider, 1.0)
+            if _rider_team.get(_rider_saved.lower(), '') == _leader_team:
+                _mul = _cap_lkp.get(_et, {}).get(_rider_saved, 1.0)
                 _pts = round(_bonus * _mul)
                 totaal += _pts
                 details.append({
                     'etappe':     _et,
                     'type':       f'team_{_t}',
-                    'renner':     _rider,
+                    'renner':     _rider_saved,
                     'rank':       f'teamgenoot van {_leader}',
                     'punten':     _pts,
                     'multiplier': _mul,
