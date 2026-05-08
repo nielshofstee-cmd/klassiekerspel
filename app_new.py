@@ -2199,23 +2199,55 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _pr_df_all_ronde.empty:
             st.warning("Nog geen ploegen opgeslagen voor dit spel.")
         else:
+            # Subpoule per speler ophalen uit credentials sheet
+            _creds_kl = creds_all if (not creds_all.empty and 'subpoule' in creds_all.columns) else pd.DataFrame()
+            def _get_poules(speler):
+                if _creds_kl.empty:
+                    return []
+                _row = _creds_kl[_creds_kl['speler_naam'].str.strip() == speler.strip()]
+                if _row.empty:
+                    return []
+                _val = str(_row['subpoule'].iloc[0]).strip()
+                return [p.strip() for p in _val.split(',') if p.strip()] if _val and _val.lower() != 'nan' else []
+
             _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
             _klas_data = []
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
                     _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
-                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl})
+                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)})
+
             _df_klas = (pd.DataFrame(_klas_data)
                         .sort_values("Punten", ascending=False)
                         .reset_index(drop=True))
-            _df_klas.index += 1
-            st.dataframe(
-                _df_klas,
-                column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
-                use_container_width=True,
-                height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT,
-            )
+
+            # Verzamel unieke poule-namen
+            _alle_poules = sorted({p for row in _df_klas['Poules'] for p in row})
+
+            def _toon_klas_tabel(df_sub):
+                _ds = df_sub[['Deelnemer', 'Punten']].copy().reset_index(drop=True)
+                _ds.index += 1
+                st.dataframe(
+                    _ds,
+                    column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                    use_container_width=True,
+                    height=TABLE_HEADER_HEIGHT + len(_ds) * TABLE_ROW_HEIGHT,
+                )
+
+            if _alle_poules:
+                _klas_tabs = st.tabs(["🌍 Algemeen"] + [f"👥 {p}" for p in _alle_poules])
+                with _klas_tabs[0]:
+                    _toon_klas_tabel(_df_klas)
+                for _ki, _pnaam in enumerate(_alle_poules):
+                    with _klas_tabs[_ki + 1]:
+                        _df_p = _df_klas[_df_klas['Poules'].apply(lambda x: _pnaam in x)].reset_index(drop=True)
+                        if _df_p.empty:
+                            st.info(f"Geen spelers gevonden voor poule '{_pnaam}'.")
+                        else:
+                            _toon_klas_tabel(_df_p)
+            else:
+                _toon_klas_tabel(_df_klas)
 
     # =============================================
     # UITSLAGEN
