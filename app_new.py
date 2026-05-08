@@ -2193,8 +2193,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
             st.write(f"Spel: `{_spel_param}` | Ploegen geladen: {len(_pr_df_all_ronde)} rijen | Uitslagen geladen: {len(_uit_ronde)} rijen")
             if not _pr_df_all_ronde.empty:
                 st.write("Spelers in sheet:", sorted(_pr_df_all_ronde['speler_naam'].unique().tolist()))
+                st.write("Voorbeeld rennersnamen (saved):", _pr_df_all_ronde['renner_naam'].dropna().head(5).tolist())
             if not _uit_ronde.empty:
                 st.write("Etappes/types in uitslagen:", _uit_ronde.groupby(['etappe','type_result']).size().to_dict())
+                _sample_riders = _uit_ronde[_uit_ronde['type_result'] == 'etappe']['rider'].head(5).tolist()
+                st.write("Voorbeeld rider-namen (PCS):", _sample_riders)
+                if not _pr_df_all_ronde.empty:
+                    _saved_set = set(_pr_df_all_ronde['renner_naam'].str.strip())
+                    _pcs_set   = set(_uit_ronde['rider'].str.strip())
+                    _overlap   = _saved_set & _pcs_set
+                    st.write(f"Overlap saved ↔ PCS: **{len(_overlap)}** van {len(_saved_set)} opgeslagen renners")
+                    if not _overlap:
+                        st.error("Geen enkele naam komt overeen — dit is de oorzaak van de 0 punten.")
+                    else:
+                        st.write("Matches:", sorted(_overlap)[:10])
 
         if _pr_df_all_ronde.empty:
             st.warning("Nog geen ploegen opgeslagen voor dit spel.")
