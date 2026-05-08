@@ -1267,6 +1267,8 @@ _RONDE_PUNTEN = {
     "youth":  {1:6,  2:4, 3:3, 4:2, 5:1},
 }
 
+_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3}
+
 
 def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None):
     """
@@ -1350,6 +1352,48 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                     'punten':     final_pnt,
                     'multiplier': multiplier,
                 })
+
+    # ── Teampunten ────────────────────────────────────────────────────────────
+    # Build rider→team from all rows in uit_df (full stage result has all teams)
+    _rider_team = {}
+    for _, _tr in uit_df.iterrows():
+        _rn = str(_tr.get('rider', '')).strip()
+        _tm = str(_tr.get('team', '')).strip()
+        if _rn and _tm:
+            _rider_team[_rn] = _tm
+
+    # Per etappe + type: find rank-1 rider and their team
+    _rank1_lkp = {}
+    for _, _tr in uit_df.iterrows():
+        if str(_tr.get('rank', '')).strip() != '1':
+            continue
+        _t = str(_tr.get('type_result', '')).strip()
+        if _t not in _TEAM_BONUS:
+            continue
+        _et = str(_tr.get('etappe', ''))
+        _rn = str(_tr.get('rider', '')).strip()
+        _tm = str(_tr.get('team', '')).strip()
+        if _rn and _tm:
+            _rank1_lkp[(_et, _t)] = (_rn, _tm)
+
+    for (_et, _t), (_leader, _leader_team) in _rank1_lkp.items():
+        _bonus = _TEAM_BONUS[_t]
+        for _rider in renner_set:
+            if _rider == _leader:
+                continue
+            if _rider_team.get(_rider, '') == _leader_team:
+                _mul = _cap_lkp.get(_et, {}).get(_rider, 1.0)
+                _pts = round(_bonus * _mul)
+                totaal += _pts
+                details.append({
+                    'etappe':     _et,
+                    'type':       f'team_{_t}',
+                    'renner':     _rider,
+                    'rank':       f'teamgenoot van {_leader}',
+                    'punten':     _pts,
+                    'multiplier': _mul,
+                })
+
     return totaal, details
 
 
