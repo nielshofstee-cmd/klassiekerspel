@@ -2371,7 +2371,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _rank_mx = _r_row_mx.iloc[0]['rank']
                         if _weergave_mx == "Punten":
                             _base_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
-                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0)
+                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0) if _ges_type_mx == 'etappe' else 1.0
                             _pnt_mx = round(_base_mx * _mul_mx)
                             _rij_mx[f"E{_et_mx}"] = _pnt_mx
                             _totaal_mx += _pnt_mx
