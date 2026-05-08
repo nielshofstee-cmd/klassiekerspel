@@ -1321,7 +1321,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
         rider = renner_lower[rider_key]  # use saved name for captain lookup
         type_r = str(row.get('type_result', '')).strip()
         etappe_str = str(row.get('etappe', ''))
-        multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0)
+        # Captain multiplier only applies to individual etappe points
+        multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0) if type_r == 'etappe' else 1.0
 
         # Oranje schildje: flat 20 punten per etappe, ongeacht positie
         if type_r == "schildjes":
@@ -1385,8 +1386,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
             if _rider_saved.lower() == _leader.lower():
                 continue
             if _rider_team.get(_rider_saved.lower(), '') == _leader_team:
-                _mul = _cap_lkp.get(_et, {}).get(_rider_saved, 1.0)
-                _pts = round(_bonus * _mul)
+                _mul = 1.0
+                _pts = _bonus
                 totaal += _pts
                 details.append({
                     'etappe':     _et,
@@ -2370,7 +2371,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _rank_mx = _r_row_mx.iloc[0]['rank']
                         if _weergave_mx == "Punten":
                             _base_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
-                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0)
+                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0) if _ges_type_mx == 'etappe' else 1.0
                             _pnt_mx = round(_base_mx * _mul_mx)
                             _rij_mx[f"E{_et_mx}"] = _pnt_mx
                             _totaal_mx += _pnt_mx
