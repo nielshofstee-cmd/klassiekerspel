@@ -1267,6 +1267,8 @@ _RONDE_PUNTEN = {
     "youth":  {1:6,  2:4, 3:3, 4:2, 5:1},
 }
 
+_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3}
+
 
 def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None):
     """
@@ -1350,6 +1352,48 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                     'punten':     final_pnt,
                     'multiplier': multiplier,
                 })
+
+    # ── Teampunten ────────────────────────────────────────────────────────────
+    # Build rider→team from all rows in uit_df (full stage result has all teams)
+    _rider_team = {}
+    for _, _tr in uit_df.iterrows():
+        _rn = str(_tr.get('rider', '')).strip()
+        _tm = str(_tr.get('team', '')).strip()
+        if _rn and _tm:
+            _rider_team[_rn] = _tm
+
+    # Per etappe + type: find rank-1 rider and their team
+    _rank1_lkp = {}
+    for _, _tr in uit_df.iterrows():
+        if str(_tr.get('rank', '')).strip() != '1':
+            continue
+        _t = str(_tr.get('type_result', '')).strip()
+        if _t not in _TEAM_BONUS:
+            continue
+        _et = str(_tr.get('etappe', ''))
+        _rn = str(_tr.get('rider', '')).strip()
+        _tm = str(_tr.get('team', '')).strip()
+        if _rn and _tm:
+            _rank1_lkp[(_et, _t)] = (_rn, _tm)
+
+    for (_et, _t), (_leader, _leader_team) in _rank1_lkp.items():
+        _bonus = _TEAM_BONUS[_t]
+        for _rider in renner_set:
+            if _rider == _leader:
+                continue
+            if _rider_team.get(_rider, '') == _leader_team:
+                _mul = _cap_lkp.get(_et, {}).get(_rider, 1.0)
+                _pts = round(_bonus * _mul)
+                totaal += _pts
+                details.append({
+                    'etappe':     _et,
+                    'type':       f'team_{_t}',
+                    'renner':     _rider,
+                    'rank':       f'teamgenoot van {_leader}',
+                    'punten':     _pts,
+                    'multiplier': _mul,
+                })
+
     return totaal, details
 
 
@@ -1895,9 +1939,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _pr_raw  = _pr_raw.loc[:, _pr_raw.columns != '']
             if all(c in _pr_raw.columns for c in ["speler_naam","spel","renner_naam"]):
                 _saved_r = _pr_raw[
-                    (_pr_raw['speler_naam'] == ingelogd_speler) &
-                    (_pr_raw['spel'] == _spel_param)
-                ]['renner_naam'].tolist()
+                    (_pr_raw['speler_naam'].str.strip() == ingelogd_speler.strip()) &
+                    (_pr_raw['spel'].str.strip().str.lower() == _spel_param)
+                ]['renner_naam'].str.strip().tolist()
     except Exception:
         pass
 
@@ -1914,7 +1958,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _pr_df_all_ronde = pd.DataFrame(_pr_all_vals[1:], columns=_hdrs_all)
             _pr_df_all_ronde = _pr_df_all_ronde.loc[:, _pr_df_all_ronde.columns != '']
             if 'spel' in _pr_df_all_ronde.columns:
-                _pr_df_all_ronde = _pr_df_all_ronde[_pr_df_all_ronde['spel'] == _spel_param]
+                _pr_df_all_ronde = _pr_df_all_ronde[
+                    _pr_df_all_ronde['spel'].str.strip().str.lower() == _spel_param
+                ]
     except Exception:
         pass
 
@@ -2011,22 +2057,32 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
 
             st.markdown("---")
-            col_sel_r, col_chk_r = st.columns([3, 2])
+
+            if _giro_gestart:
+                # Ploeg is vergrendeld na de start van de Giro
+                st.warning(f"🔒 De {_naam} is gestart — je ploeg kan niet meer worden gewijzigd. Gebruik het Wissels-tabblad voor wijzigingen.")
+                gekozen_r = _saved_r
+                col_sel_r, col_chk_r = st.columns([3, 2])
+                with col_sel_r:
+                    st.subheader("Jouw vergrendelde ploeg")
+            else:
+                col_sel_r, col_chk_r = st.columns([3, 2])
 
             with col_sel_r:
-                st.subheader(f"Selecteer jouw ploeg")
-                st.caption("✅ = bevestigd op de startlijst · starters staan bovenaan")
-                _gekozen_disp = st.multiselect(
-                    f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
-                    options=alle_namen_r,
-                    default=standaard_r,
-                    max_selections=MAX_RENNERS_R,
-                    key=f"ploeg_{_spel_param}",
-                )
-                # Converteer weergavenamen terug naar echte namen
-                gekozen_r = [_disp2naam.get(d, d.replace(' ✅', '').strip()) for d in _gekozen_disp]
-                _pct = min(100, int(len(gekozen_r) / MAX_RENNERS_R * 100))
-                st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
+                if not _giro_gestart:
+                    st.subheader(f"Selecteer jouw ploeg")
+                    st.caption("✅ = bevestigd op de startlijst · starters staan bovenaan")
+                    _gekozen_disp = st.multiselect(
+                        f"Kies renners (typ om te zoeken, max {MAX_RENNERS_R}):",
+                        options=alle_namen_r,
+                        default=standaard_r,
+                        max_selections=MAX_RENNERS_R,
+                        key=f"ploeg_{_spel_param}",
+                    )
+                    # Converteer weergavenamen terug naar echte namen
+                    gekozen_r = [_disp2naam.get(d, d.replace(' ✅', '').strip()) for d in _gekozen_disp]
+                    _pct = min(100, int(len(gekozen_r) / MAX_RENNERS_R * 100))
+                    st.progress(_pct, text=f"{len(gekozen_r)} / {MAX_RENNERS_R} geselecteerd")
 
             with col_chk_r:
                 st.subheader("Regels check")
@@ -2093,7 +2149,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _btn_col, _ = st.columns([1, 3])
             with _btn_col:
                 if st.button("💾 Ploeg opslaan", type="primary",
-                             disabled=not gekozen_r,
+                             disabled=not gekozen_r or _giro_gestart,
                              key=f"save_{_spel_param}"):
                     try:
                         try:
@@ -2133,26 +2189,65 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # =============================================
     with tab_klassement:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
+        with st.expander("🔍 Debug klassement", expanded=False):
+            st.write(f"Spel: `{_spel_param}` | Ploegen geladen: {len(_pr_df_all_ronde)} rijen | Uitslagen geladen: {len(_uit_ronde)} rijen")
+            if not _pr_df_all_ronde.empty:
+                st.write("Spelers in sheet:", sorted(_pr_df_all_ronde['speler_naam'].unique().tolist()))
+            if not _uit_ronde.empty:
+                st.write("Etappes/types in uitslagen:", _uit_ronde.groupby(['etappe','type_result']).size().to_dict())
+
         if _pr_df_all_ronde.empty:
             st.warning("Nog geen ploegen opgeslagen voor dit spel.")
         else:
+            # Subpoule per speler ophalen uit credentials sheet
+            _creds_kl = creds_all if (not creds_all.empty and 'subpoule' in creds_all.columns) else pd.DataFrame()
+            def _get_poules(speler):
+                if _creds_kl.empty:
+                    return []
+                _row = _creds_kl[_creds_kl['speler_naam'].str.strip() == speler.strip()]
+                if _row.empty:
+                    return []
+                _val = str(_row['subpoule'].iloc[0]).strip()
+                return [p.strip() for p in _val.split(',') if p.strip()] if _val and _val.lower() != 'nan' else []
+
             _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
             _klas_data = []
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
                     _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
-                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl})
+                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)})
+
             _df_klas = (pd.DataFrame(_klas_data)
                         .sort_values("Punten", ascending=False)
                         .reset_index(drop=True))
-            _df_klas.index += 1
-            st.dataframe(
-                _df_klas,
-                column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
-                use_container_width=True,
-                height=TABLE_HEADER_HEIGHT + len(_df_klas) * TABLE_ROW_HEIGHT,
-            )
+
+            # Verzamel unieke poule-namen
+            _alle_poules = sorted({p for row in _df_klas['Poules'] for p in row})
+
+            def _toon_klas_tabel(df_sub):
+                _ds = df_sub[['Deelnemer', 'Punten']].copy().reset_index(drop=True)
+                _ds.index += 1
+                st.dataframe(
+                    _ds,
+                    column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                    use_container_width=True,
+                    height=TABLE_HEADER_HEIGHT + len(_ds) * TABLE_ROW_HEIGHT,
+                )
+
+            if _alle_poules:
+                _klas_tabs = st.tabs(["🌍 Algemeen"] + [f"👥 {p}" for p in _alle_poules])
+                with _klas_tabs[0]:
+                    _toon_klas_tabel(_df_klas)
+                for _ki, _pnaam in enumerate(_alle_poules):
+                    with _klas_tabs[_ki + 1]:
+                        _df_p = _df_klas[_df_klas['Poules'].apply(lambda x: _pnaam in x)].reset_index(drop=True)
+                        if _df_p.empty:
+                            st.info(f"Geen spelers gevonden voor poule '{_pnaam}'.")
+                        else:
+                            _toon_klas_tabel(_df_p)
+            else:
+                _toon_klas_tabel(_df_klas)
 
     # =============================================
     # UITSLAGEN
