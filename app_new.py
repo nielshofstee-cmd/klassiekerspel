@@ -3193,7 +3193,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     st.subheader("✍️ Handmatige DNS/DNF invoer")
                     st.caption("Voeg een DNS of DNF handmatig toe voor een renner. Overschrijft alleen de rij voor die renner in die etappe.")
 
-                    _man_renner_opties = sorted(_r_race['renner'].tolist()) if not _r_race.empty else []
+                    _heeft_starters_beh = '_starter' in _r_race.columns and _r_race['_starter'].any() if not _r_race.empty else False
+                    _man_renner_opties = sorted(
+                        _r_race[_r_race['_starter']]['renner'].tolist()
+                        if _heeft_starters_beh
+                        else _r_race['renner'].tolist()
+                    ) if not _r_race.empty else []
                     if not _man_renner_opties:
                         st.info("Geen renners beschikbaar (laad eerst de renners sheet).")
                     else:
