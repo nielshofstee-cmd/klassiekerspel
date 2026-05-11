@@ -2636,7 +2636,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         )
 
                         _actief_set_w = set(_actief_w)
-                        _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist()
+                        # Only show confirmed starters; fall back to all riders if startlist unknown
+                        _heeft_starters_w = '_starter' in _r_race.columns and _r_race['_starter'].any()
+                        _starter_pool_w = (
+                            set(_r_race[_r_race['_starter']]['renner'].tolist())
+                            if _heeft_starters_w else set(_r_race['renner'].tolist())
+                        )
+                        _beschikbaar_w = sorted([r for r in _starter_pool_w
                                                  if r not in _actief_set_w
                                                  and str(r).strip().lower() not in _beschermd_w])
 
