@@ -2637,7 +2637,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                         _actief_set_w = set(_actief_w)
                         _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist()
-                                                 if r not in _actief_set_w])
+                                                 if r not in _actief_set_w
+                                                 and str(r).strip().lower() not in _beschermd_w])
 
                         _max_n_w = min(_wissels_over_w, len(_inwisselbaar_w))
                         _n_w = st.number_input("Hoeveel wissels?", min_value=1, max_value=_max_n_w,
@@ -2690,6 +2691,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             or str(r).strip().lower() in _beschermd_w]
                             if _niet_elig_w:
                                 _w_err.append(f"Niet inwisselbaar: {', '.join(_niet_elig_w)}")
+
+                            # Controleer of "erin" renners niet beschermd zijn
+                            _in_beschermd_w = [r for r in _in_keuzes_w
+                                               if str(r).strip().lower() in _beschermd_w]
+                            if _in_beschermd_w:
+                                _w_err.append(f"Kan niet erin: {', '.join(_in_beschermd_w)} staat in een beschermd klassement")
 
                             if _w_err:
                                 for _we in _w_err:
