@@ -2112,10 +2112,19 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 # Ploeg is vergrendeld na de start van de Giro
                 st.warning(f"🔒 De {_naam} is gestart — je ploeg kan niet meer worden gewijzigd. Gebruik het Wissels-tabblad voor wijzigingen.")
                 gekozen_r = _saved_r
+                # Determine swapped-out riders (used in regels check and team table)
+                _inactief_ploeg = set()
+                if not _pr_df_all_ronde.empty:
+                    _sp_rows_pl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == ingelogd_speler]
+                    if 'tot_datum' in _sp_rows_pl.columns:
+                        _inactief_ploeg = set(
+                            _sp_rows_pl[_sp_rows_pl['tot_datum'].astype(str).str.strip() != '']['renner_naam'].tolist()
+                        )
                 col_sel_r, col_chk_r = st.columns([3, 2])
                 with col_sel_r:
                     st.subheader("Jouw vergrendelde ploeg")
             else:
+                _inactief_ploeg = set()
                 col_sel_r, col_chk_r = st.columns([3, 2])
 
             with col_sel_r:
@@ -2137,8 +2146,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
             with col_chk_r:
                 st.subheader("Regels check")
                 if gekozen_r:
-                    _sel = _r_race[_r_race['renner'].isin(gekozen_r)].copy()
-                    _n      = len(gekozen_r)
+                    _actief_r = [r for r in gekozen_r if r not in _inactief_ploeg] if _giro_gestart else gekozen_r
+                    _sel = _r_race[_r_race['renner'].isin(_actief_r)].copy()
+                    _n      = len(_actief_r)
                     _n_top  = int((_sel['_cat'] == 'topper').sum())
                     _n_sub  = int((_sel['_cat'] == 'subtopper').sum())
                     _n_ren  = int((_sel['_cat'] == 'renner').sum())
@@ -2186,14 +2196,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if gekozen_r:
                 st.markdown("---")
                 st.subheader("Geselecteerde ploeg")
-                # Determine swapped-out riders for status column
-                _inactief_ploeg = set()
-                if _giro_gestart and not _pr_df_all_ronde.empty:
-                    _sp_rows_pl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == ingelogd_speler]
-                    if 'tot_datum' in _sp_rows_pl.columns:
-                        _inactief_ploeg = set(
-                            _sp_rows_pl[_sp_rows_pl['tot_datum'].astype(str).str.strip() != '']['renner_naam'].tolist()
-                        )
                 _show_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
                 _show_r = _r_race[_r_race['renner'].isin(gekozen_r)][_show_cols].copy()
                 _show_r = _show_r.rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
