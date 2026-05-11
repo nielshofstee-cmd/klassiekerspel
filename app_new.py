@@ -2186,10 +2186,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if gekozen_r:
                 st.markdown("---")
                 st.subheader("Geselecteerde ploeg")
+                # Determine swapped-out riders for status column
+                _inactief_ploeg = set()
+                if _giro_gestart and not _pr_df_all_ronde.empty:
+                    _sp_rows_pl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == ingelogd_speler]
+                    if 'tot_datum' in _sp_rows_pl.columns:
+                        _inactief_ploeg = set(
+                            _sp_rows_pl[_sp_rows_pl['tot_datum'].astype(str).str.strip() != '']['renner_naam'].tolist()
+                        )
                 _show_cols = [c for c in ['renner','_cat','team','land'] if c in _r_race.columns]
                 _show_r = _r_race[_r_race['renner'].isin(gekozen_r)][_show_cols].copy()
                 _show_r = _show_r.rename(columns={'renner':'Renner','_cat':'Categorie','team':'Ploeg','land':'Land'})
                 _show_r['Categorie'] = _show_r['Categorie'].map(lambda x: _CAT_DISPLAY.get(x, x))
+                if _inactief_ploeg:
+                    _show_r['Status'] = _show_r['Renner'].apply(lambda r: '❌ Gewisseld' if r in _inactief_ploeg else '✅ Actief')
                 _show_r = _show_r.sort_values(['Categorie','Renner']).reset_index(drop=True)
                 st.dataframe(_show_r, use_container_width=True, hide_index=True,
                              height=TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * min(len(_show_r), 25))
@@ -2395,7 +2405,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
             _weergave_mx = st.radio("Weergave:", ["Punten", "Positie"], horizontal=True, key=f"mx_view_{_spel_param}")
 
-            _mijn_r_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]['renner_naam'].tolist()
+            _sp_rows_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]
+            _mijn_r_mx = _sp_rows_mx['renner_naam'].tolist()
+            if 'tot_datum' in _sp_rows_mx.columns:
+                _inactief_mx = set(
+                    _sp_rows_mx[_sp_rows_mx['tot_datum'].astype(str).str.strip() != '']['renner_naam'].tolist()
+                )
+            else:
+                _inactief_mx = set()
             _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
             _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
             _tabel_mx = _RONDE_PUNTEN.get(_ges_type_mx, {})
@@ -2426,7 +2443,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
-                _rij_mx = {"Renner": _rn_mx}
+                _label_mx = f"❌ {_rn_mx}" if _rn_mx in _inactief_mx else _rn_mx
+                _rij_mx = {"Renner": _label_mx}
                 _totaal_mx = 0
                 for _et_mx in _etappes_mx:
                     _et_r_mx = _uit_type_mx[_uit_type_mx['etappe'].astype(str) == str(_et_mx)]
@@ -2473,7 +2491,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 if _et1_deadline:
                     st.info(f"🔒 Teams van andere deelnemers zijn zichtbaar na de start van de {_naam} ({_et1_deadline.strftime('%d-%m-%Y %H:%M')}).")
 
-            _sp_renners_tm = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_tm]['renner_naam'].tolist()
+            _sp_rows_tm_all = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_tm]
+            _sp_renners_tm = _sp_rows_tm_all['renner_naam'].tolist()
+            # Inactive (swapped-out) riders for this player
+            if 'tot_datum' in _sp_rows_tm_all.columns:
+                _inactief_tm = set(
+                    _sp_rows_tm_all[_sp_rows_tm_all['tot_datum'].astype(str).str.strip() != '']['renner_naam'].tolist()
+                )
+            else:
+                _inactief_tm = set()
             if not _sp_renners_tm:
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
             else:
@@ -2487,9 +2513,11 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 for _rn_tm in sorted(_sp_renners_tm):
                     _info_tm = _r_race[_r_race['renner'] == _rn_tm]
                     _pnt_tm = _renner_pnt_tm.get(_rn_tm, 0)
+                    _status_tm = '❌ Gewisseld' if _rn_tm in _inactief_tm else '✅ Actief'
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
                         _team_rows_tm.append({
+                            "Status": _status_tm,
                             "Renner": _rn_tm,
                             "Categorie": _CAT_DISPLAY.get(str(_ri_tm.get('_cat', '')), str(_ri_tm.get('_cat', ''))),
                             "Ploeg": _ri_tm.get('team', ''),
@@ -2497,7 +2525,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             "Punten": _pnt_tm,
                         })
                     else:
-                        _team_rows_tm.append({"Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
+                        _team_rows_tm.append({"Status": _status_tm, "Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
                 _df_tm = (pd.DataFrame(_team_rows_tm)
                           .sort_values("Punten", ascending=False)
                           .reset_index(drop=True))
@@ -2887,7 +2915,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info("Geen etappenummers gevonden in de etappes_rondes sheet.")
             else:
                 _et_opties_cap = _etappes_ronde['etappe'].tolist()
-                _et_cap = st.selectbox("Voor welke etappe?", _et_opties_cap, key=f"cap_et_{_spel_param}")
+                _et_sorted_cap = sorted(_et_opties_cap, key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+                _next_et_cap = next(
+                    (e for e in _et_sorted_cap if _et_deadlines.get(str(e)) and _et_deadlines[str(e)] > _nu_cap),
+                    _et_sorted_cap[-1] if _et_sorted_cap else None,
+                )
+                _default_et_idx = _et_opties_cap.index(_next_et_cap) if _next_et_cap in _et_opties_cap else 0
+                _et_cap = st.selectbox("Voor welke etappe?", _et_opties_cap, index=_default_et_idx, key=f"cap_et_{_spel_param}")
                 _et_row_cap = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_cap)]
                 _deadline_cap_str = str(_et_row_cap.iloc[0].get('deadline', '')).strip() if not _et_row_cap.empty else ""
                 _deadline_cap_dt = _et_deadlines.get(str(_et_cap))
@@ -2914,7 +2948,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     if _deadline_cap_str:
                         _cap_type_label = "Super etappe – 3 captains (3.0× / 2.5× / 2.0×)" if _is_super_cap else "Etappe – 1 captain (2.0×)"
                         st.caption(f"Deadline: {_deadline_cap_str}   •   {_cap_type_label}")
-                    _mr_cap = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_cap]['renner_naam'].tolist()
+                    _mr_cap_rows = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _naam_cap]
+                    if 'tot_datum' in _mr_cap_rows.columns:
+                        _mr_cap = _mr_cap_rows[
+                            _mr_cap_rows['tot_datum'].astype(str).str.strip() == ''
+                        ]['renner_naam'].tolist()
+                    else:
+                        _mr_cap = _mr_cap_rows['renner_naam'].tolist()
                     if not _mr_cap:
                         st.info("Je hebt nog geen ploeg opgeslagen. Ga naar het Ploeg tabblad.")
                     else:
