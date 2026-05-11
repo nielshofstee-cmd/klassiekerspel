@@ -1148,7 +1148,7 @@ def scrape_pcs_resultaat(url, limit=None):
                     rider = a.text.strip()
                 elif 'team/' in href and not team:
                     team = a.text.strip()
-            if rider and rank and rank.upper() != 'DNS':
+            if rider and rank:
                 data.append({'rank': rank.upper() if not rank.isdigit() else rank,
                              'rider': rider, 'team': team})
 
@@ -2234,7 +2234,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _et_nums = [int(str(e)) for e in _uit_ronde['etappe'].unique() if str(e).isdigit()]
                 if _et_nums:
                     _laatste_et_kl = str(max(_et_nums))
-            _klas_col_et = f"Et.{_laatste_et_kl}" if _laatste_et_kl else None
+            _klas_col_et = f"Etappe {_laatste_et_kl}" if _laatste_et_kl else None
 
             _klas_data = []
             with st.spinner("Klassement berekenen..."):
@@ -2529,10 +2529,11 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _wissels_gebruikt_w = 0
                 _wissels_over_w = max(0, _MAX_WISSELS_R - _wissels_gebruikt_w)
 
-                # ── Bepaal laatste gerijde etappe en DNF-renners ──────────────
+                # ── Bepaal laatste gerijde etappe en DNF/DNS-renners ─────────
                 _laatste_et_nr_w = None
                 _dnf_renners_w = set()   # genormaliseerde namen (stripped, lowercase)
                 _dnf_naam_map_w = {}     # lowercase → originele naam uit uitslagen
+                _dnf_rank_w = {}         # lowercase → rank string (DNF/DNS/OTL/DSQ)
                 if not _uit_ronde.empty and 'type_result' in _uit_ronde.columns and 'etappe' in _uit_ronde.columns:
                     # Case-insensitive filter op type_result
                     _et_uitsl = _uit_ronde[_uit_ronde['type_result'].str.strip().str.lower() == 'etappe']
@@ -2542,12 +2543,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             key=lambda x: int(str(x)) if str(x).isdigit() else 0
                         ))
                         _et_last_rows = _et_uitsl[_et_uitsl['etappe'].astype(str) == _laatste_et_nr_w]
-                        # DNF/OTL/DSQ: rank is niet-numeriek
+                        # DNF/OTL/DSQ/DNS: rank is niet-numeriek
                         _dnf_mask = ~pd.to_numeric(_et_last_rows['rank'], errors='coerce').notna()
-                        for _r_dnf in _et_last_rows[_dnf_mask]['rider'].tolist():
-                            _r_dnf_norm = str(_r_dnf).strip().lower()
+                        for _, _dnf_row in _et_last_rows[_dnf_mask].iterrows():
+                            _r_dnf = str(_dnf_row['rider']).strip()
+                            _r_dnf_norm = _r_dnf.lower()
                             _dnf_renners_w.add(_r_dnf_norm)
-                            _dnf_naam_map_w[_r_dnf_norm] = str(_r_dnf).strip()
+                            _dnf_naam_map_w[_r_dnf_norm] = _r_dnf
+                            _dnf_rank_w[_r_dnf_norm] = str(_dnf_row.get('rank', 'DNF')).upper()
 
                 # Normaliseer actief-team namen voor vergelijking
                 _actief_w_norm = {str(r).strip().lower(): str(r).strip() for r in _actief_w}
@@ -2582,7 +2585,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 col_w1.metric("Wissels gebruikt", f"{_wissels_gebruikt_w} / {_MAX_WISSELS_R}")
                 col_w2.metric("Wissels over", str(_wissels_over_w))
                 if _laatste_et_nr_w:
-                    col_w3.metric("Laatste etappe (DNF-check)", f"Etappe {_laatste_et_nr_w}")
+                    col_w3.metric("Laatste etappe (DNF/DNS-check)", f"Etappe {_laatste_et_nr_w}")
                 else:
                     col_w3.info("Nog geen etappe-uitslag beschikbaar.")
 
@@ -2593,7 +2596,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _rn_w_norm = str(_rn_w).strip().lower()
                     _is_dnf_w   = _rn_w_norm in _dnf_renners_w
                     _besch_w    = _beschermd_w.get(_rn_w_norm, "")
-                    _status_w   = ("🔒 " + _besch_w) if _besch_w else ("❌ DNF" if _is_dnf_w else "✅ Actief")
+                    _uitval_lbl = f"❌ {_dnf_rank_w.get(_rn_w_norm, 'DNF')}" if _is_dnf_w else "✅ Actief"
+                    _status_w   = ("🔒 " + _besch_w) if _besch_w else _uitval_lbl
                     if not _rn_info_w.empty:
                         _ri_w = _rn_info_w.iloc[0]
                         _team_info_w.append({
@@ -2615,7 +2619,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 # ── Debug-expander ─────────────────────────────────────────────
                 with st.expander("🔍 Debug wissel-info", expanded=False):
                     st.write(f"**Laatste etappe:** {_laatste_et_nr_w}")
-                    st.write(f"**DNF-renners gevonden in uitslagen:** {sorted(_dnf_naam_map_w.values()) or '(geen)'}")
+                    st.write(f"**DNF/DNS-renners gevonden in uitslagen:** {sorted(_dnf_naam_map_w.values()) or '(geen)'}")
                     st.write(f"**Actief team ({len(_actief_w)}):** {sorted(_actief_w)}")
                     _debug_match = []
                     for _an, _ao in _actief_w_norm.items():
@@ -2630,7 +2634,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 elif _laatste_et_nr_w is None:
                     st.info("Er zijn nog geen etappe-uitslagen beschikbaar. Wissels zijn pas mogelijk nadat de eerste etappe is gescraped.")
                 else:
-                    # Renners die uit mogen: DNF in laatste etappe EN niet beschermd
+                    # Renners die uit mogen: DNF/DNS in laatste etappe EN niet beschermd
                     # Vergelijking via genormaliseerde namen (case-insensitive, stripped)
                     _inwisselbaar_w = [
                         _actief_w_norm[_an]
@@ -2640,14 +2644,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                     if not _inwisselbaar_w:
                         st.info(
-                            f"Geen van jouw renners heeft een DNF in etappe {_laatste_et_nr_w}, "
-                            "of alle DNF-renners staan in een beschermd klassement. "
+                            f"Geen van jouw renners heeft een DNF of DNS in etappe {_laatste_et_nr_w}, "
+                            "of alle DNF/DNS-renners staan in een beschermd klassement. "
                             "Open de debug-expander hierboven voor details."
                         )
                     else:
                         st.subheader("Wissel doorvoeren")
                         st.caption(
-                            f"Alleen renners met DNF in etappe {_laatste_et_nr_w} mogen eruit. "
+                            f"Alleen renners met DNF of DNS in etappe {_laatste_et_nr_w} mogen eruit. "
                             f"Beschermde renners (GC top 10 / andere top 3) zijn niet inwisselbaar. "
                             f"Na de wissel gelden: max {MAX_TOPPER_R} toppers, max {MAX_SUBTOPPER_R} subtoppers, "
                             f"max {_MAX_PER_PLOEG_W} per ploeg, max {_MAX_PER_LAND_W} per land."
@@ -2674,7 +2678,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             _cw1, _cw2 = st.columns(2)
                             with _cw1:
                                 _uit_opties_w = [r for r in _inwisselbaar_w if r not in _uit_keuzes_w]
-                                _uit_w = st.selectbox("Eruit (DNF):", _uit_opties_w,
+                                _uit_w = st.selectbox("Eruit (DNF/DNS):", _uit_opties_w,
                                                       key=f"wuit_{_spel_param}_{_i_w}")
                                 _uit_keuzes_w.append(_uit_w)
                             with _cw2:
