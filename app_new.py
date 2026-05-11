@@ -2312,14 +2312,42 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _alle_poules = sorted({p for row in _df_klas['Poules'] for p in row})
 
             def _toon_klas_tabel(df_sub):
-                _cols_show = ['Deelnemer', 'Punten']
-                if _klas_col_et and _klas_col_et in df_sub.columns:
-                    _cols_show = ['Deelnemer', 'Punten', _klas_col_et]
-                _ds = df_sub[_cols_show].copy().reset_index(drop=True)
-                _ds.index += 1
-                _col_cfg = {"Punten": st.column_config.NumberColumn("Punten", format="%d")}
+                _ds = df_sub.copy().reset_index(drop=True)
+                # Current ranks (df_sub is already sorted descending by Punten)
+                _curr_rank = {name: i + 1 for i, name in enumerate(_ds['Deelnemer'])}
+
+                _cols_show = ['Deelnemer']
+                _col_cfg = {'Deelnemer': st.column_config.TextColumn('Deelnemer')}
+
+                # Rank-change column (requires etappe column to derive previous total)
                 if _klas_col_et and _klas_col_et in _ds.columns:
-                    _col_cfg[_klas_col_et] = st.column_config.NumberColumn(_klas_col_et, format="%d")
+                    _prev_totals = _ds['Punten'] - _ds[_klas_col_et]
+                    _prev_sorted = (
+                        pd.DataFrame({'Deelnemer': _ds['Deelnemer'], '_p': _prev_totals})
+                        .sort_values('_p', ascending=False)['Deelnemer'].tolist()
+                    )
+                    _prev_rank = {n: i + 1 for i, n in enumerate(_prev_sorted)}
+
+                    def _trend(name):
+                        c, p = _curr_rank.get(name), _prev_rank.get(name)
+                        if c is None or p is None:
+                            return ''
+                        return '🟢 ▲' if c < p else ('🔴 ▼' if c > p else '🔵 —')
+
+                    _ds['↕'] = _ds['Deelnemer'].apply(_trend)
+                    _cols_show = ['↕'] + _cols_show
+                    _col_cfg['↕'] = st.column_config.TextColumn('↕', width=50)
+
+                # Etappe column first, then Tussenstand
+                if _klas_col_et and _klas_col_et in _ds.columns:
+                    _cols_show.append(_klas_col_et)
+                    _col_cfg[_klas_col_et] = st.column_config.NumberColumn(_klas_col_et, format='%d')
+
+                _cols_show.append('Punten')
+                _col_cfg['Punten'] = st.column_config.NumberColumn('Tussenstand', format='%d')
+
+                _ds = _ds[_cols_show].reset_index(drop=True)
+                _ds.index += 1
                 st.dataframe(
                     _ds,
                     column_config=_col_cfg,
