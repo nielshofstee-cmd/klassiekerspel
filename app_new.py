@@ -2227,12 +2227,24 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 return [p.strip() for p in _val.split(',') if p.strip()] if _val and _val.lower() != 'nan' else []
 
             _spelers_kl = sorted(_pr_df_all_ronde['speler_naam'].unique())
+
+            # Last etappe with results (for the extra column)
+            _laatste_et_kl = None
+            if not _uit_ronde.empty:
+                _et_nums = [int(str(e)) for e in _uit_ronde['etappe'].unique() if str(e).isdigit()]
+                if _et_nums:
+                    _laatste_et_kl = str(max(_et_nums))
+            _klas_col_et = f"Et.{_laatste_et_kl}" if _laatste_et_kl else None
+
             _klas_data = []
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
-                    _tot_kl, _ = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
-                    _klas_data.append({"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)})
+                    _tot_kl, _det_kl = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
+                    _row_kl = {"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)}
+                    if _laatste_et_kl:
+                        _row_kl[_klas_col_et] = sum(d['punten'] for d in _det_kl if str(d.get('etappe', '')) == _laatste_et_kl)
+                    _klas_data.append(_row_kl)
 
             _df_klas = (pd.DataFrame(_klas_data)
                         .sort_values("Punten", ascending=False)
@@ -2242,11 +2254,17 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _alle_poules = sorted({p for row in _df_klas['Poules'] for p in row})
 
             def _toon_klas_tabel(df_sub):
-                _ds = df_sub[['Deelnemer', 'Punten']].copy().reset_index(drop=True)
+                _cols_show = ['Deelnemer', 'Punten']
+                if _klas_col_et and _klas_col_et in df_sub.columns:
+                    _cols_show = ['Deelnemer', 'Punten', _klas_col_et]
+                _ds = df_sub[_cols_show].copy().reset_index(drop=True)
                 _ds.index += 1
+                _col_cfg = {"Punten": st.column_config.NumberColumn("Punten", format="%d")}
+                if _klas_col_et and _klas_col_et in _ds.columns:
+                    _col_cfg[_klas_col_et] = st.column_config.NumberColumn(_klas_col_et, format="%d")
                 st.dataframe(
                     _ds,
-                    column_config={"Punten": st.column_config.NumberColumn("Punten", format="%d")},
+                    column_config=_col_cfg,
                     use_container_width=True,
                     height=TABLE_HEADER_HEIGHT + len(_ds) * TABLE_ROW_HEIGHT,
                 )
@@ -2636,8 +2654,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         )
 
                         _actief_set_w = set(_actief_w)
-                        _beschikbaar_w = sorted([r for r in _r_race['renner'].tolist()
-                                                 if r not in _actief_set_w])
+                        # Only show confirmed starters; fall back to all riders if startlist unknown
+                        _heeft_starters_w = '_starter' in _r_race.columns and _r_race['_starter'].any()
+                        _starter_pool_w = (
+                            set(_r_race[_r_race['_starter']]['renner'].tolist())
+                            if _heeft_starters_w else set(_r_race['renner'].tolist())
+                        )
+                        _beschikbaar_w = sorted([r for r in _starter_pool_w
+                                                 if r not in _actief_set_w
+                                                 and str(r).strip().lower() not in _beschermd_w])
 
                         _max_n_w = min(_wissels_over_w, len(_inwisselbaar_w))
                         _n_w = st.number_input("Hoeveel wissels?", min_value=1, max_value=_max_n_w,
@@ -2690,6 +2715,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                             or str(r).strip().lower() in _beschermd_w]
                             if _niet_elig_w:
                                 _w_err.append(f"Niet inwisselbaar: {', '.join(_niet_elig_w)}")
+
+                            # Controleer of "erin" renners niet beschermd zijn
+                            _in_beschermd_w = [r for r in _in_keuzes_w
+                                               if str(r).strip().lower() in _beschermd_w]
+                            if _in_beschermd_w:
+                                _w_err.append(f"Kan niet erin: {', '.join(_in_beschermd_w)} staat in een beschermd klassement")
 
                             if _w_err:
                                 for _we in _w_err:
