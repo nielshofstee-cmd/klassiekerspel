@@ -2887,7 +2887,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info("Geen etappenummers gevonden in de etappes_rondes sheet.")
             else:
                 _et_opties_cap = _etappes_ronde['etappe'].tolist()
-                _et_cap = st.selectbox("Voor welke etappe?", _et_opties_cap, key=f"cap_et_{_spel_param}")
+                _et_sorted_cap = sorted(_et_opties_cap, key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+                _next_et_cap = next(
+                    (e for e in _et_sorted_cap if _et_deadlines.get(str(e)) and _et_deadlines[str(e)] > _nu_cap),
+                    _et_sorted_cap[-1] if _et_sorted_cap else None,
+                )
+                _default_et_idx = _et_opties_cap.index(_next_et_cap) if _next_et_cap in _et_opties_cap else 0
+                _et_cap = st.selectbox("Voor welke etappe?", _et_opties_cap, index=_default_et_idx, key=f"cap_et_{_spel_param}")
                 _et_row_cap = _etappes_ronde[_etappes_ronde['etappe'].astype(str) == str(_et_cap)]
                 _deadline_cap_str = str(_et_row_cap.iloc[0].get('deadline', '')).strip() if not _et_row_cap.empty else ""
                 _deadline_cap_dt = _et_deadlines.get(str(_et_cap))
