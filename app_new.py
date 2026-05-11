@@ -1441,6 +1441,52 @@ def save_ronde_uitslagen(spel, etappe, type_result, data):
     except Exception as e:
         return False, str(e)
 
+
+def add_manual_uitval_ronde(spel, etappe, rider, rank, team=''):
+    """Voegt een handmatige DNS/DNF/OTL/DSQ toe aan uitslagen_rondes voor één renner.
+    Overschrijft alleen de rij voor deze renner in de opgegeven etappe; alle
+    overige etappe-rijen blijven ongewijzigd.
+    """
+    COLS = ['spel', 'etappe', 'type_result', 'rank', 'rider', 'team']
+    try:
+        try:
+            ws = sh.worksheet('uitslagen_rondes')
+            vals = ws.get_all_values()
+            if len(vals) > 1:
+                hdrs = [h.strip().lower() for h in vals[0]]
+                existing = pd.DataFrame(vals[1:], columns=hdrs)
+                existing = existing.loc[:, existing.columns != '']
+            else:
+                existing = pd.DataFrame(columns=COLS)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sh.add_worksheet('uitslagen_rondes', rows=5000, cols=8)
+            existing = pd.DataFrame(columns=COLS)
+
+        for c in COLS:
+            if c not in existing.columns:
+                existing[c] = ''
+
+        # Remove existing row for this specific rider / etappe / type_result=etappe
+        mask_remove = (
+            (existing['spel'].astype(str).str.strip() == str(spel)) &
+            (existing['etappe'].astype(str).str.strip() == str(etappe)) &
+            (existing['type_result'].astype(str).str.strip() == 'etappe') &
+            (existing['rider'].astype(str).str.strip().str.lower() == rider.strip().lower())
+        )
+        existing = existing[~mask_remove]
+
+        new_row = pd.DataFrame([{
+            'spel': spel, 'etappe': str(etappe), 'type_result': 'etappe',
+            'rank': rank.upper(), 'rider': rider, 'team': team,
+        }])
+        final = pd.concat([existing[COLS], new_row], ignore_index=True)
+        ws.clear()
+        ws.update([COLS] + final.fillna('').values.tolist())
+        st.cache_data.clear()
+        return True, f"{rider} opgeslagen als {rank.upper()} voor etappe {etappe}."
+    except Exception as e:
+        return False, str(e)
+
 # (AANGEPAST VOOR TEAM PUNTEN BIJ DNF/OTL/DSQ)
 @st.cache_data(ttl=60)
 def bereken_volledige_score(speler_naam, koers_naam, u_all, k_all, mijn_renners):
@@ -3141,6 +3187,51 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                     st.code(f"class={_clt.get('class')} | eerste 200 chars: {str(_clt)[:200]}", language="html")
                                         except Exception as _cl_e:
                                             st.error(str(_cl_e))
+
+                    # ── Handmatige DNS/DNF invoer ─────────────────────────────
+                    st.divider()
+                    st.subheader("✍️ Handmatige DNS/DNF invoer")
+                    st.caption("Voeg een DNS of DNF handmatig toe voor een renner. Overschrijft alleen de rij voor die renner in die etappe.")
+
+                    _man_renner_opties = sorted(_r_race['renner'].tolist()) if not _r_race.empty else []
+                    if not _man_renner_opties:
+                        st.info("Geen renners beschikbaar (laad eerst de renners sheet).")
+                    else:
+                        _mc1, _mc2, _mc3 = st.columns(3)
+                        with _mc1:
+                            _man_renner = st.selectbox(
+                                "Renner:",
+                                _man_renner_opties,
+                                key=f"man_renner_{_spel_param}",
+                            )
+                        with _mc2:
+                            _man_etappe = st.selectbox(
+                                "Etappe:",
+                                _etappe_keuzes,
+                                key=f"man_etappe_{_spel_param}",
+                            )
+                        with _mc3:
+                            _man_rank = st.selectbox(
+                                "Status:",
+                                ["DNS", "DNF", "OTL", "DSQ"],
+                                key=f"man_rank_{_spel_param}",
+                            )
+
+                        if st.button("💾 Opslaan", key=f"man_save_{_spel_param}"):
+                            _man_team = ''
+                            if not _r_race.empty and 'team' in _r_race.columns:
+                                _rr_row = _r_race[_r_race['renner'] == _man_renner]
+                                if not _rr_row.empty:
+                                    _man_team = str(_rr_row.iloc[0].get('team', '')).strip()
+                            _m_ok, _m_msg = add_manual_uitval_ronde(
+                                _spel_param, _man_etappe, _man_renner, _man_rank, _man_team
+                            )
+                            if _m_ok:
+                                st.success(f"✅ {_m_msg}")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"Fout bij opslaan: {_m_msg}")
 
         elif _beh_pw:
             st.error("Onjuist wachtwoord.")
