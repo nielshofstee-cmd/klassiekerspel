@@ -2234,7 +2234,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _et_nums = [int(str(e)) for e in _uit_ronde['etappe'].unique() if str(e).isdigit()]
                 if _et_nums:
                     _laatste_et_kl = str(max(_et_nums))
-            _klas_col_et = f"Et.{_laatste_et_kl}" if _laatste_et_kl else None
+            _klas_col_et = f"Etappe {_laatste_et_kl}" if _laatste_et_kl else None
 
             _klas_data = []
             with st.spinner("Klassement berekenen..."):
