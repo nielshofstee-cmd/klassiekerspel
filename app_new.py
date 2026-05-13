@@ -1290,51 +1290,52 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
         for _, _er in etappes_df.iterrows():
             _et_type_lkp[str(_er['etappe'])] = str(_er.get('type', '')).strip().lower()
 
-    # Build etappe deadline lookup: etappe_str -> datetime (for active-window filtering)
+    # Build etappe deadline lookup: etappe_str -> date (for active-window filtering)
     _et_dl_lkp = {}
     if etappes_df is not None and not etappes_df.empty and 'deadline' in etappes_df.columns:
         for _, _er in etappes_df.iterrows():
             _dl_s = str(_er.get('deadline', '')).strip()
             for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
                 try:
-                    _et_dl_lkp[str(_er['etappe'])] = datetime.strptime(_dl_s, _fmt).replace(tzinfo=_AMS)
+                    _et_dl_lkp[str(_er['etappe'])] = datetime.strptime(_dl_s, _fmt).date()
                     break
                 except (ValueError, TypeError):
                     pass
 
-    # Build per-rider active windows: renner_lower -> [(van_dt, tot_dt_or_None)]
+    # Build per-rider active windows: renner_lower -> [(van_date, tot_date_or_None)]
     _rider_windows = {}
     if team_df is not None and not team_df.empty:
         for _, _tr in team_df.iterrows():
             _rn = str(_tr.get('renner_naam', '')).strip().lower()
             _van_s = str(_tr.get('vanaf_datum', '')).strip()
             _tot_s = str(_tr.get('tot_datum', '')).strip()
-            _van_dt, _tot_dt = None, None
-            for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                try:
-                    _van_dt = datetime.strptime(_van_s, _fmt).replace(tzinfo=_AMS)
-                    break
-                except (ValueError, TypeError):
-                    pass
-            if _tot_s:
+            _van_d, _tot_d = None, None
+            if _van_s:
                 for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
                     try:
-                        _tot_dt = datetime.strptime(_tot_s, _fmt).replace(tzinfo=_AMS)
+                        _van_d = datetime.strptime(_van_s, _fmt).date()
                         break
                     except (ValueError, TypeError):
                         pass
-            _rider_windows.setdefault(_rn, []).append((_van_dt, _tot_dt))
+            if _tot_s:
+                for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        _tot_d = datetime.strptime(_tot_s, _fmt).date()
+                        break
+                    except (ValueError, TypeError):
+                        pass
+            _rider_windows.setdefault(_rn, []).append((_van_d, _tot_d))
 
     def _active(rider_lower, etappe_str):
-        """True if rider was in the team when this etappe's deadline passed."""
+        """True if rider was in the team on the day of this etappe's deadline."""
         if not _rider_windows or rider_lower not in _rider_windows:
             return True
         _dl = _et_dl_lkp.get(etappe_str)
         if _dl is None:
             return True  # no deadline known → assume active
         for _van, _tot in _rider_windows[rider_lower]:
-            # joined before deadline AND (not yet swapped out OR swapped out after deadline)
-            if (_van is None or _dl > _van) and (_tot is None or _dl <= _tot):
+            # joined on or before deadline AND (not yet swapped out OR swapped out after deadline)
+            if (_van is None or _dl >= _van) and (_tot is None or _dl < _tot):
                 return True
         return False
 
@@ -2281,7 +2282,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                 ~((_pr_ex['speler_naam'] == ingelogd_speler) &
                                   (_pr_ex['spel'] == _spel_param))
                             ]
-                        _vandaag = datetime.now(_AMS).strftime("%Y-%m-%d %H:%M")
+                        _vandaag = datetime.now(_AMS).strftime("%Y-%m-%d")
                         _pr_new = pd.DataFrame([
                             {"speler_naam": ingelogd_speler, "spel": _spel_param,
                              "renner_naam": r, "vanaf_datum": _vandaag, "tot_datum": ""}
@@ -2673,7 +2674,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info(f"Je hebt nog geen ploeg opgeslagen voor {_naam}.")
             else:
                 _nu_w = datetime.now(_AMS)
-                _today_w = pd.to_datetime(_nu_w.replace(tzinfo=None))  # huidige tijd (timezone-naïef) voor vergelijking
+                _today_w = pd.to_datetime(_nu_w.date())
                 if 'tot_datum' in _sp_rows_w.columns and 'vanaf_datum' in _sp_rows_w.columns:
                     _van_parsed_w = pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce')
                     _tot_parsed_w = pd.to_datetime(_sp_rows_w['tot_datum'], errors='coerce')
@@ -2903,7 +2904,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                  if len(_pr_w2_vals) > 1
                                                  else pd.DataFrame(columns=_pr_w2_hdrs))
                                     _pr_w2_df = _pr_w2_df.loc[:, _pr_w2_df.columns != '']
-                                    _datum_w2 = _today_w.strftime("%Y-%m-%d %H:%M")
+                                    _datum_w2 = _nu_w.strftime("%Y-%m-%d")
                                     _mask_sp_w2 = (_pr_w2_df['speler_naam'] == _naam_w) & (_pr_w2_df['spel'] == _spel_param)
                                     for _r_uit_w in _uit_keuzes_w:
                                         _idx_w = _pr_w2_df[
