@@ -2700,15 +2700,16 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             _et_uitsl['etappe'].unique(),
                             key=lambda x: int(str(x)) if str(x).isdigit() else 0
                         ))
-                        _et_last_rows = _et_uitsl[_et_uitsl['etappe'].astype(str) == _laatste_et_nr_w]
-                        # DNF/OTL/DSQ/DNS: rank is niet-numeriek
-                        _dnf_mask = ~pd.to_numeric(_et_last_rows['rank'], errors='coerce').notna()
-                        for _, _dnf_row in _et_last_rows[_dnf_mask].iterrows():
+                        # Verzamel DNF/OTL/DSQ/DNS uit ALLE etappes: eenmaal uitgevallen = altijd uitgevallen
+                        _dnf_mask_all = ~pd.to_numeric(_et_uitsl['rank'], errors='coerce').notna()
+                        for _, _dnf_row in _et_uitsl[_dnf_mask_all].iterrows():
                             _r_dnf = str(_dnf_row['rider']).strip()
                             _r_dnf_norm = _r_dnf.lower()
                             _dnf_renners_w.add(_r_dnf_norm)
                             _dnf_naam_map_w[_r_dnf_norm] = _r_dnf
-                            _dnf_rank_w[_r_dnf_norm] = str(_dnf_row.get('rank', 'DNF')).upper()
+                            # Bewaar de rank; overschrijf niet als al gezet (eerste DNF is leidend)
+                            if _r_dnf_norm not in _dnf_rank_w:
+                                _dnf_rank_w[_r_dnf_norm] = str(_dnf_row.get('rank', 'DNF')).upper()
 
                 # Normaliseer actief-team namen voor vergelijking
                 _actief_w_norm = {str(r).strip().lower(): str(r).strip() for r in _actief_w}
