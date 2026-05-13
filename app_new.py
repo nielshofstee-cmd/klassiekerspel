@@ -2784,6 +2784,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     st.write(f"**Actief team genormaliseerd:** {sorted(_actief_w_norm.keys())}")
                     _debug_overlap = sorted(set(_actief_w_norm.keys()) & _dnf_renners_w)
                     st.write(f"**Overlap (wissels mogelijk):** {_debug_overlap or '(geen — controleer naamsverschil!)'}")
+                    st.write(f"**_sp_rows_w shape:** {_sp_rows_w.shape}, columns: {list(_sp_rows_w.columns)}")
+                    st.write(f"**_today_w:** {_today_w}")
+                    st.dataframe(_sp_rows_w[['renner_naam','vanaf_datum','tot_datum']].head(5)
+                                 if all(c in _sp_rows_w.columns for c in ['renner_naam','vanaf_datum','tot_datum'])
+                                 else _sp_rows_w.head(5),
+                                 hide_index=True, use_container_width=True)
                     _debug_match = []
                     for _an, _ao in sorted(_actief_w_norm.items()):
                         _in_dnf = _an in _dnf_renners_w
