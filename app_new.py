@@ -2673,7 +2673,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info(f"Je hebt nog geen ploeg opgeslagen voor {_naam}.")
             else:
                 _nu_w = datetime.now(_AMS)
-                _today_w = pd.to_datetime(_nu_w.date())
+                _today_w = pd.to_datetime(_nu_w.replace(tzinfo=None))  # huidige tijd (timezone-naïef) voor vergelijking
                 if 'tot_datum' in _sp_rows_w.columns and 'vanaf_datum' in _sp_rows_w.columns:
                     _mask_act_w = (
                         (pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce') <= _today_w) &
