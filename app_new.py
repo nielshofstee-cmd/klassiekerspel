@@ -2675,10 +2675,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _nu_w = datetime.now(_AMS)
                 _today_w = pd.to_datetime(_nu_w.replace(tzinfo=None))  # huidige tijd (timezone-naïef) voor vergelijking
                 if 'tot_datum' in _sp_rows_w.columns and 'vanaf_datum' in _sp_rows_w.columns:
+                    _van_parsed_w = pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce')
+                    _tot_parsed_w = pd.to_datetime(_sp_rows_w['tot_datum'], errors='coerce')
                     _mask_act_w = (
-                        (pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce') <= _today_w) &
+                        (_van_parsed_w.isna() | (_van_parsed_w <= _today_w)) &
                         (_sp_rows_w['tot_datum'].isna() | (_sp_rows_w['tot_datum'] == "") |
-                         (pd.to_datetime(_sp_rows_w['tot_datum'], errors='coerce') > _today_w))
+                         (_tot_parsed_w > _today_w))
                     )
                     _actief_w = _sp_rows_w[_mask_act_w]['renner_naam'].tolist()
                     _wissels_gebruikt_w = int((_sp_rows_w['tot_datum'].notna() & (_sp_rows_w['tot_datum'] != "")).sum())
