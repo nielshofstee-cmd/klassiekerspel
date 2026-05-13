@@ -2785,17 +2785,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _beschermd = _beschermd_w.get(_an, "")
                         _debug_match.append({"Renner (team)": _ao, "In DNF-lijst": _in_dnf, "Beschermd": _beschermd or "—"})
                     st.dataframe(pd.DataFrame(_debug_match), hide_index=True, use_container_width=True)
-                    st.markdown("**Wissel-rijen in database (rijen met tot_datum = wissel uit):**")
-                    _wissel_rows_dbg = _sp_rows_w[_sp_rows_w['tot_datum'].notna() & (_sp_rows_w['tot_datum'] != "")]
-                    if _wissel_rows_dbg.empty:
-                        st.info("Geen wissel-rijen gevonden.")
-                    else:
-                        st.dataframe(_wissel_rows_dbg[['renner_naam','vanaf_datum','tot_datum']].reset_index(drop=True),
-                                     hide_index=True, use_container_width=True)
-
-                if st.button("🔄 Ververs data", key=f"ververs_w_{_spel_param}"):
-                    st.cache_data.clear()
-                    st.rerun()
 
                 st.divider()
                 if _wissels_over_w <= 0:
