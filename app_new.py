@@ -2700,16 +2700,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             _et_uitsl['etappe'].unique(),
                             key=lambda x: int(str(x)) if str(x).isdigit() else 0
                         ))
-                        # Verzamel DNF/OTL/DSQ/DNS uit ALLE etappes: eenmaal uitgevallen = altijd uitgevallen
-                        _dnf_mask_all = ~pd.to_numeric(_et_uitsl['rank'], errors='coerce').notna()
-                        for _, _dnf_row in _et_uitsl[_dnf_mask_all].iterrows():
+                        _et_last_rows = _et_uitsl[_et_uitsl['etappe'].astype(str) == _laatste_et_nr_w]
+                        # DNF/OTL/DSQ/DNS: rank is niet-numeriek
+                        _dnf_mask = ~pd.to_numeric(_et_last_rows['rank'], errors='coerce').notna()
+                        for _, _dnf_row in _et_last_rows[_dnf_mask].iterrows():
                             _r_dnf = str(_dnf_row['rider']).strip()
                             _r_dnf_norm = _r_dnf.lower()
                             _dnf_renners_w.add(_r_dnf_norm)
                             _dnf_naam_map_w[_r_dnf_norm] = _r_dnf
-                            # Bewaar de rank; overschrijf niet als al gezet (eerste DNF is leidend)
-                            if _r_dnf_norm not in _dnf_rank_w:
-                                _dnf_rank_w[_r_dnf_norm] = str(_dnf_row.get('rank', 'DNF')).upper()
+                            _dnf_rank_w[_r_dnf_norm] = str(_dnf_row.get('rank', 'DNF')).upper()
 
                 # Normaliseer actief-team namen voor vergelijking
                 _actief_w_norm = {str(r).strip().lower(): str(r).strip() for r in _actief_w}
@@ -2778,14 +2777,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 # ── Debug-expander ─────────────────────────────────────────────
                 with st.expander("🔍 Debug wissel-info", expanded=False):
                     st.write(f"**Laatste etappe:** {_laatste_et_nr_w}")
-                    st.write(f"**DNF/DNS-renners gevonden in uitslagen:** {sorted(_dnf_naam_map_w.values()) or '(geen)'}")
-                    st.write(f"**Actief team ({len(_actief_w)}):** {sorted(_actief_w)}")
+                    st.write(f"**DNF/DNS-renners gevonden in uitslagen (genormaliseerd):** {sorted(_dnf_renners_w) or '(geen)'}")
+                    st.write(f"**Actief team genormaliseerd:** {sorted(_actief_w_norm.keys())}")
+                    _debug_overlap = sorted(set(_actief_w_norm.keys()) & _dnf_renners_w)
+                    st.write(f"**Overlap (wissels mogelijk):** {_debug_overlap or '(geen — controleer naamsverschil!)'}")
                     _debug_match = []
-                    for _an, _ao in _actief_w_norm.items():
+                    for _an, _ao in sorted(_actief_w_norm.items()):
                         _in_dnf = _an in _dnf_renners_w
                         _beschermd = _beschermd_w.get(_an, "")
-                        _debug_match.append({"Renner (team)": _ao, "In DNF-lijst": _in_dnf, "Beschermd": _beschermd or "—"})
+                        _debug_match.append({"Renner (team)": _ao, "Genorm. teamnaam": _an,
+                                             "In DNF-lijst": _in_dnf, "Beschermd": _beschermd or "—"})
                     st.dataframe(pd.DataFrame(_debug_match), hide_index=True, use_container_width=True)
+                    if _dnf_renners_w:
+                        st.write("**DNF-namen uit uitslagen (genormaliseerd):**")
+                        st.write(sorted(_dnf_renners_w))
 
                 st.divider()
                 if _wissels_over_w <= 0:
