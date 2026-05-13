@@ -2755,7 +2755,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _is_dnf_w   = _rn_w_norm in _dnf_renners_w
                     _besch_w    = _beschermd_w.get(_rn_w_norm, "")
                     _uitval_lbl = f"❌ {_dnf_rank_w.get(_rn_w_norm, 'DNF')}" if _is_dnf_w else "✅ Actief"
-                    _status_w   = ("🔒 " + _besch_w) if _besch_w else _uitval_lbl
+                    _status_w   = _uitval_lbl if _is_dnf_w else (("🔒 " + _besch_w) if _besch_w else _uitval_lbl)
                     if not _rn_info_w.empty:
                         _ri_w = _rn_info_w.iloc[0]
                         _team_info_w.append({
@@ -2792,25 +2792,25 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 elif _laatste_et_nr_w is None:
                     st.info("Er zijn nog geen etappe-uitslagen beschikbaar. Wissels zijn pas mogelijk nadat de eerste etappe is gescraped.")
                 else:
-                    # Renners die uit mogen: DNF/DNS in laatste etappe EN niet beschermd
+                    # Renners die uit mogen: DNF/DNS in laatste etappe (beschermd klassement geldt alleen voor erin)
                     # Vergelijking via genormaliseerde namen (case-insensitive, stripped)
                     _inwisselbaar_w = [
                         _actief_w_norm[_an]
                         for _an in _actief_w_norm
-                        if _an in _dnf_renners_w and _an not in _beschermd_w
+                        if _an in _dnf_renners_w
                     ]
 
                     if not _inwisselbaar_w:
                         st.info(
-                            f"Geen van jouw renners heeft een DNF of DNS in etappe {_laatste_et_nr_w}, "
-                            "of alle DNF/DNS-renners staan in een beschermd klassement. "
+                            f"Geen van jouw renners heeft een DNF of DNS in etappe {_laatste_et_nr_w}. "
                             "Open de debug-expander hierboven voor details."
                         )
                     else:
                         st.subheader("Wissel doorvoeren")
                         st.caption(
                             f"Alleen renners met DNF of DNS in etappe {_laatste_et_nr_w} mogen eruit. "
-                            f"Beschermde renners (GC top 10 / andere top 3) zijn niet inwisselbaar. "
+                            f"Renners in een beschermd klassement (GC top 10 / andere top 3) kunnen niet worden ingewisseld, "
+                            f"maar mogen wel eruit als ze DNF/DNS hebben. "
                             f"Na de wissel gelden: max {MAX_TOPPER_R} toppers, max {MAX_SUBTOPPER_R} subtoppers, "
                             f"max {_MAX_PER_PLOEG_W} per ploeg, max {_MAX_PER_LAND_W} per land."
                         )
@@ -2873,8 +2873,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                             # Controleer of "eruit" renners nog steeds eligible zijn (genormaliseerd)
                             _niet_elig_w = [r for r in _uit_keuzes_w
-                                            if str(r).strip().lower() not in _dnf_renners_w
-                                            or str(r).strip().lower() in _beschermd_w]
+                                            if str(r).strip().lower() not in _dnf_renners_w]
                             if _niet_elig_w:
                                 _w_err.append(f"Niet inwisselbaar: {', '.join(_niet_elig_w)}")
 
