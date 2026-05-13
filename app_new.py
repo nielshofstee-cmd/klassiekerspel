@@ -2127,7 +2127,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _disp2naam = dict(zip(_r_race['_disp'], _r_race['renner']))
             _naam2disp = dict(zip(_r_race['renner'], _r_race['_disp']))
 
-            standaard_r = [_naam2disp.get(r, r) for r in _saved_r if _naam2disp.get(r, r) in alle_namen_r]
+            standaard_r = [_naam2disp.get(r, r) for r in _saved_r if _naam2disp.get(r, r) in alle_namen_r][:MAX_RENNERS_R]
 
             # Opgeslagen status tonen
             if standaard_r:
