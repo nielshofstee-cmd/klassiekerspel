@@ -1270,14 +1270,15 @@ _RONDE_PUNTEN = {
 _TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3}
 
 
-def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None):
+def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None, team_df=None):
     """
     Berekent totaalpunten voor een speler over alle etappes en klassementen.
-    mijn_renners : list van rennersnamen
+    mijn_renners : list van rennersnamen (alle, inclusief uitgewisseld)
     uit_df       : uitslagen_rondes DataFrame (al gefilterd op ronde/spel)
-    keuzes_df    : keuzes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
+    keuzes_df    : keuzes_rondes DataFrame, optioneel
     speler_naam  : naam van de speler voor captain lookup, optioneel
-    etappes_df   : etappes_rondes DataFrame (al gefilterd op ronde/spel), optioneel
+    etappes_df   : etappes_rondes DataFrame, optioneel
+    team_df      : speler_teams_rondes rijen voor deze speler (met vanaf_datum/tot_datum)
     Returns (totaal_int, details_list_of_dicts)
     """
     if not mijn_renners or uit_df.empty:
@@ -1288,6 +1289,54 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
     if etappes_df is not None and not etappes_df.empty and 'type' in etappes_df.columns:
         for _, _er in etappes_df.iterrows():
             _et_type_lkp[str(_er['etappe'])] = str(_er.get('type', '')).strip().lower()
+
+    # Build etappe deadline lookup: etappe_str -> datetime (for active-window filtering)
+    _et_dl_lkp = {}
+    if etappes_df is not None and not etappes_df.empty and 'deadline' in etappes_df.columns:
+        for _, _er in etappes_df.iterrows():
+            _dl_s = str(_er.get('deadline', '')).strip()
+            for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    _et_dl_lkp[str(_er['etappe'])] = datetime.strptime(_dl_s, _fmt).replace(tzinfo=_AMS)
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    # Build per-rider active windows: renner_lower -> [(van_dt, tot_dt_or_None)]
+    _rider_windows = {}
+    if team_df is not None and not team_df.empty:
+        for _, _tr in team_df.iterrows():
+            _rn = str(_tr.get('renner_naam', '')).strip().lower()
+            _van_s = str(_tr.get('vanaf_datum', '')).strip()
+            _tot_s = str(_tr.get('tot_datum', '')).strip()
+            _van_dt, _tot_dt = None, None
+            for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                try:
+                    _van_dt = datetime.strptime(_van_s, _fmt).replace(tzinfo=_AMS)
+                    break
+                except (ValueError, TypeError):
+                    pass
+            if _tot_s:
+                for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        _tot_dt = datetime.strptime(_tot_s, _fmt).replace(tzinfo=_AMS)
+                        break
+                    except (ValueError, TypeError):
+                        pass
+            _rider_windows.setdefault(_rn, []).append((_van_dt, _tot_dt))
+
+    def _active(rider_lower, etappe_str):
+        """True if rider was in the team when this etappe's deadline passed."""
+        if not _rider_windows or rider_lower not in _rider_windows:
+            return True
+        _dl = _et_dl_lkp.get(etappe_str)
+        if _dl is None:
+            return True  # no deadline known → assume active
+        for _van, _tot in _rider_windows[rider_lower]:
+            # joined before deadline AND (not yet swapped out OR swapped out after deadline)
+            if (_van is None or _dl > _van) and (_tot is None or _dl <= _tot):
+                return True
+        return False
 
     # Build captain lookup: etappe_str -> {rider_name: multiplier}
     _cap_lkp = {}
@@ -1321,6 +1370,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
         rider = renner_lower[rider_key]  # use saved name for captain lookup
         type_r = str(row.get('type_result', '')).strip()
         etappe_str = str(row.get('etappe', ''))
+        if not _active(rider_key, etappe_str):
+            continue
         # Captain multiplier only applies to individual etappe points
         multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0) if type_r == 'etappe' else 1.0
 
@@ -1384,6 +1435,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
         _bonus = _TEAM_BONUS[_t]
         for _rider_saved in renner_lower.values():
             if _rider_saved.lower() == _leader.lower():
+                continue
+            if not _active(_rider_saved.lower(), _et):
                 continue
             if _rider_team.get(_rider_saved.lower(), '') == _leader_team:
                 _mul = 1.0
@@ -2228,7 +2281,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                 ~((_pr_ex['speler_naam'] == ingelogd_speler) &
                                   (_pr_ex['spel'] == _spel_param))
                             ]
-                        _vandaag = datetime.now(_AMS).strftime("%Y-%m-%d")
+                        _vandaag = datetime.now(_AMS).strftime("%Y-%m-%d %H:%M")
                         _pr_new = pd.DataFrame([
                             {"speler_naam": ingelogd_speler, "spel": _spel_param,
                              "renner_naam": r, "vanaf_datum": _vandaag, "tot_datum": ""}
@@ -2298,7 +2351,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
-                    _tot_kl, _det_kl = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde)
+                    _team_df_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]
+                    _tot_kl, _det_kl = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde, _team_df_kl)
                     _row_kl = {"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)}
                     if _laatste_et_kl:
                         _row_kl[_klas_col_et] = sum(d['punten'] for d in _det_kl if str(d.get('etappe', '')) == _laatste_et_kl)
@@ -2534,7 +2588,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info(f"{_speler_tm} heeft nog geen ploeg opgeslagen.")
             else:
                 # Bereken punten per renner
-                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde, _keuzes_ronde, _speler_tm, _etappes_ronde)
+                _tot_tm, _det_tm = bereken_ronde_score(_sp_renners_tm, _uit_ronde, _keuzes_ronde, _speler_tm, _etappes_ronde, _sp_rows_tm_all)
                 _renner_pnt_tm = {}
                 for _d in _det_tm:
                     _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
@@ -2842,7 +2896,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                  if len(_pr_w2_vals) > 1
                                                  else pd.DataFrame(columns=_pr_w2_hdrs))
                                     _pr_w2_df = _pr_w2_df.loc[:, _pr_w2_df.columns != '']
-                                    _datum_w2 = _today_w.strftime("%Y-%m-%d")
+                                    _datum_w2 = _today_w.strftime("%Y-%m-%d %H:%M")
                                     _mask_sp_w2 = (_pr_w2_df['speler_naam'] == _naam_w) & (_pr_w2_df['spel'] == _spel_param)
                                     for _r_uit_w in _uit_keuzes_w:
                                         _idx_w = _pr_w2_df[
