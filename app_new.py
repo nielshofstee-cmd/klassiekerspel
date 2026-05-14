@@ -2446,22 +2446,32 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _uit_show_u = _uit_et_u[_uit_et_u['type_result'] == _ges_type_u].copy()
                 _uit_show_u['_sort'] = pd.to_numeric(_uit_show_u['rank'], errors='coerce').fillna(999)
 
-                col_u1, col_u2 = st.columns([2, 1])
-                with col_u1:
-                    st.subheader(f"Etappe {_ges_etappe_u} – {_TYPE_LABELS_U.get(_ges_type_u, _ges_type_u)}")
-                    _disp_u = _uit_show_u.sort_values('_sort').head(50)
-                    _disp_cols_u = [c for c in ['rank', 'rider', 'team'] if c in _disp_u.columns]
-                    st.dataframe(_disp_u[_disp_cols_u], hide_index=True, use_container_width=True)
-                with col_u2:
-                    st.subheader("Jouw renners")
-                    if _saved_r:
-                        _mijn_u = _uit_show_u[_uit_show_u['rider'].isin(_saved_r)].sort_values('_sort')
-                        if _mijn_u.empty:
-                            st.info("Geen van jouw renners in deze uitslag.")
-                        else:
-                            st.dataframe(_mijn_u[_disp_cols_u], hide_index=True, use_container_width=True)
-                    else:
-                        st.info("Nog geen ploeg opgeslagen.")
+                st.subheader(f"Etappe {_ges_etappe_u} – {_TYPE_LABELS_U.get(_ges_type_u, _ges_type_u)}")
+                _disp_u = _uit_show_u.sort_values('_sort').head(50)
+                _disp_cols_u = [c for c in ['rank', 'rider', 'team'] if c in _disp_u.columns]
+                st.dataframe(_disp_u[_disp_cols_u], hide_index=True, use_container_width=True)
+
+            st.divider()
+            st.subheader("Punten per renner per deelnemer")
+            _spelers_u = sorted(_pr_df_all_ronde['speler_naam'].unique())
+            _rijen_pu = []
+            for _sp_u in _spelers_u:
+                _sp_rows_u = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_u]
+                _renners_u = _sp_rows_u['renner_naam'].tolist()
+                _, _details_u = bereken_ronde_score(
+                    _renners_u, _uit_ronde,
+                    keuzes_df=_keuzes_ronde, speler_naam=_sp_u,
+                    etappes_df=_etappes_ronde, team_df=_sp_rows_u,
+                )
+                _per_renner_u = {}
+                for _d in _details_u:
+                    _rn = _d['renner']
+                    _per_renner_u[_rn] = _per_renner_u.get(_rn, 0) + _d['punten']
+                for _rn, _pts in sorted(_per_renner_u.items(), key=lambda x: -x[1]):
+                    _rijen_pu.append({"Deelnemer": _sp_u, "Renner": _rn, "Punten": _pts})
+            if _rijen_pu:
+                st.dataframe(pd.DataFrame(_rijen_pu), hide_index=True, use_container_width=True,
+                             height=TABLE_HEADER_HEIGHT + len(_rijen_pu) * TABLE_ROW_HEIGHT)
 
     # =============================================
     # MATRIX
