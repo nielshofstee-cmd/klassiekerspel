@@ -2392,6 +2392,55 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _row_kl[_klas_col_et] = sum(d['punten'] for d in _det_kl if str(d.get('etappe', '')) == _laatste_et_kl)
                     _klas_data.append(_row_kl)
 
+            # ── Scoring debug ────────────────────────────────────────────────
+            with st.expander("🔍 Debug scoring (actief-window)", expanded=False):
+                # Bouw dezelfde lookups als bereken_ronde_score() en toon ze
+                _dbg_dl = {}
+                if not _etappes_ronde.empty and 'deadline' in _etappes_ronde.columns:
+                    for _, _er in _etappes_ronde.iterrows():
+                        _dl_s = str(_er.get('deadline', '')).strip()
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                            try:
+                                from datetime import datetime as _dt2
+                                _dbg_dl[str(_er['etappe'])] = _dt2.strptime(_dl_s, _fmt).date()
+                                break
+                            except (ValueError, TypeError):
+                                pass
+                st.write("**Etappe deadlines geladen uit database:**", _dbg_dl or "(geen — etappes_rondes leeg of geen deadline kolom)")
+
+                _dbg_sp = st.selectbox("Speler voor window-check:", sorted(_pr_df_all_ronde['speler_naam'].unique()), key="dbg_sp_kl")
+                _dbg_rows = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _dbg_sp]
+                if all(c in _dbg_rows.columns for c in ['renner_naam', 'vanaf_datum', 'tot_datum']):
+                    st.write("**Rijen in speler_teams_rondes (renner / vanaf / tot):**")
+                    st.dataframe(_dbg_rows[['renner_naam', 'vanaf_datum', 'tot_datum']], hide_index=True, use_container_width=True)
+                    # Simuleer _active() per (renner, etappe)
+                    _dbg_ets = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+                    _dbg_actief = []
+                    for _, _dr in _dbg_rows.iterrows():
+                        _rn = str(_dr['renner_naam']).strip()
+                        _van_s = str(_dr.get('vanaf_datum', '')).strip()
+                        _tot_s = str(_dr.get('tot_datum', '')).strip()
+                        _van_d = _tot_d = None
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                            try:
+                                if _van_s: _van_d = datetime.strptime(_van_s, _fmt).date(); break
+                            except: pass
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                            try:
+                                if _tot_s: _tot_d = datetime.strptime(_tot_s, _fmt).date(); break
+                            except: pass
+                        for _et in _dbg_ets:
+                            _dl = _dbg_dl.get(str(_et))
+                            if _dl is None:
+                                _actief = "(geen deadline)"
+                            else:
+                                _cond_van = _van_d is None or _dl >= _van_d
+                                _cond_tot = _tot_d is None or _dl < _tot_d
+                                _actief = "✅" if (_cond_van and _cond_tot) else "❌"
+                            _dbg_actief.append({"Renner": _rn, "Etappe": _et, "Deadline": str(_dl), "vanaf": _van_s or "(leeg)", "tot": _tot_s or "(leeg)", "Actief": _actief})
+                    if _dbg_actief:
+                        st.dataframe(pd.DataFrame(_dbg_actief), hide_index=True, use_container_width=True)
+
             _df_klas = (pd.DataFrame(_klas_data)
                         .sort_values("Punten", ascending=False)
                         .reset_index(drop=True))
