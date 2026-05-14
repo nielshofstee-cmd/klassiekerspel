@@ -2452,14 +2452,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.dataframe(_disp_u[_disp_cols_u], hide_index=True, use_container_width=True)
 
             st.divider()
-            st.subheader("Punten per renner per deelnemer")
+            st.subheader(f"Punten per deelnemer – Etappe {_ges_etappe_u}")
+            _uit_et_pu = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_ges_etappe_u)]
             _spelers_u = sorted(_pr_df_all_ronde['speler_naam'].unique())
             _rijen_pu = []
             for _sp_u in _spelers_u:
                 _sp_rows_u = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_u]
                 _renners_u = _sp_rows_u['renner_naam'].tolist()
                 _, _details_u = bereken_ronde_score(
-                    _renners_u, _uit_ronde,
+                    _renners_u, _uit_et_pu,
                     keuzes_df=_keuzes_ronde, speler_naam=_sp_u,
                     etappes_df=_etappes_ronde, team_df=_sp_rows_u,
                 )
@@ -2467,11 +2468,17 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 for _d in _details_u:
                     _rn = _d['renner']
                     _per_renner_u[_rn] = _per_renner_u.get(_rn, 0) + _d['punten']
-                for _rn, _pts in sorted(_per_renner_u.items(), key=lambda x: -x[1]):
-                    _rijen_pu.append({"Deelnemer": _sp_u, "Renner": _rn, "Punten": _pts})
+                _samenvatting = ", ".join(
+                    f"{_rn} ({_pts})"
+                    for _rn, _pts in sorted(_per_renner_u.items(), key=lambda x: -x[1])
+                    if _pts > 0
+                )
+                _totaal_u = sum(_per_renner_u.values())
+                _rijen_pu.append({"Deelnemer": _sp_u, "Totaal": _totaal_u, "Renners (punten)": _samenvatting or "—"})
             if _rijen_pu:
-                st.dataframe(pd.DataFrame(_rijen_pu), hide_index=True, use_container_width=True,
-                             height=TABLE_HEADER_HEIGHT + len(_rijen_pu) * TABLE_ROW_HEIGHT)
+                _df_pu = pd.DataFrame(_rijen_pu).sort_values("Totaal", ascending=False)
+                st.dataframe(_df_pu, hide_index=True, use_container_width=True,
+                             height=TABLE_HEADER_HEIGHT + len(_df_pu) * TABLE_ROW_HEIGHT)
 
     # =============================================
     # MATRIX
