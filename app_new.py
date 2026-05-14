@@ -2133,7 +2133,45 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     pass
     _giro_gestart = _et1_deadline is not None and datetime.now(_AMS) >= _et1_deadline
 
-    tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
+    # Bouw gesorteerde lijst van (etappe_int, deadline_date) voor wissel-label berekening
+    _DATE_FMTS_R = ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y")
+    _et_dl_sorted_r = []
+    if not _etappes_ronde.empty and 'deadline' in _etappes_ronde.columns:
+        for _, _er in _etappes_ronde.iterrows():
+            _dl_s = str(_er.get('deadline', '')).strip()
+            for _fmt in _DATE_FMTS_R:
+                try:
+                    _et_dl_sorted_r.append((int(_er['etappe']), datetime.strptime(_dl_s, _fmt).date()))
+                    break
+                except (ValueError, TypeError):
+                    pass
+    _et_dl_sorted_r.sort()
+    _et1_date_r = _et1_deadline.date() if _et1_deadline else None
+
+    def _erin_label(sp_rows, renner_naam):
+        """Geeft '(erin et. X)' als renner na de start is ingewisseld, anders ''."""
+        if not _et_dl_sorted_r or _et1_date_r is None:
+            return ""
+        for _, _row in sp_rows[sp_rows['renner_naam'] == renner_naam].iterrows():
+            _tot = str(_row.get('tot_datum', '')).strip()
+            if _tot:
+                continue  # uitgewisseld, niet de actieve wissel-in rij
+            _van_s = str(_row.get('vanaf_datum', '')).strip()
+            _van_d = None
+            for _fmt in _DATE_FMTS_R:
+                try:
+                    if _van_s:
+                        _van_d = datetime.strptime(_van_s, _fmt).date()
+                        break
+                except (ValueError, TypeError):
+                    pass
+            if _van_d and _van_d > _et1_date_r:
+                for _et_n, _et_d in _et_dl_sorted_r:
+                    if _et_d >= _van_d:
+                        return f" (erin et. {_et_n})"
+        return ""
+
+
         ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
     )
     with tab_ploeg:
@@ -2611,7 +2649,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
-                _label_mx = f"❌ {_rn_mx}" if _rn_mx in _inactief_mx else _rn_mx
+                _wissel_lbl = _erin_label(_sp_rows_mx, _rn_mx)
+                _label_mx = f"❌ {_rn_mx}" if _rn_mx in _inactief_mx else f"{_rn_mx}{_wissel_lbl}"
                 _rij_mx = {"Renner": _label_mx}
                 _totaal_mx = 0
                 for _et_mx in _etappes_mx:
@@ -2668,7 +2707,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 for _rn_tm in sorted(_sp_renners_tm):
                     _info_tm = _r_race[_r_race['renner'] == _rn_tm]
                     _pnt_tm = _renner_pnt_tm.get(_rn_tm, 0)
-                    _status_tm = '❌ Gewisseld' if _rn_tm in _inactief_tm else '✅ Actief'
+                    _wissel_lbl_tm = _erin_label(_sp_rows_tm_all, _rn_tm)
+                    if _rn_tm in _inactief_tm:
+                        _status_tm = '❌ Gewisseld'
+                    elif _wissel_lbl_tm:
+                        _status_tm = f'🔄 Erin{_wissel_lbl_tm}'
+                    else:
+                        _status_tm = '✅ Actief'
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
                         _team_rows_tm.append({
