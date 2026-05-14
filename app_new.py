@@ -2477,7 +2477,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _rijen_pu.append({"Deelnemer": _sp_u, "Totaal": _totaal_u, "Renners (punten)": _samenvatting or "—"})
             if _rijen_pu:
                 _df_pu = pd.DataFrame(_rijen_pu).sort_values("Totaal", ascending=False)
-                st.dataframe(_df_pu, hide_index=True, use_container_width=True,
+                st.dataframe(_df_pu, hide_index=True, use_container_width=False,
+                             column_config={
+                                 "Deelnemer": st.column_config.TextColumn("Deelnemer", width=130),
+                                 "Totaal": st.column_config.NumberColumn("Totaal", width=80),
+                                 "Renners (punten)": st.column_config.TextColumn("Renners (punten)", width=1200),
+                             },
                              height=TABLE_HEADER_HEIGHT + len(_df_pu) * TABLE_ROW_HEIGHT)
 
     # =============================================
@@ -2490,8 +2495,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
         elif _uit_ronde.empty:
             st.info("Nog geen uitslagen beschikbaar.")
         else:
-            _TYPE_LABELS_M = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
-
             if _giro_gestart:
                 _spelers_mx = sorted(_pr_df_all_ronde['speler_naam'].unique())
                 _def_mx = _spelers_mx.index(ingelogd_speler) if ingelogd_speler in _spelers_mx else 0
@@ -2501,12 +2504,6 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 if _et1_deadline:
                     st.info(f"🔒 Teams van andere deelnemers zijn zichtbaar na de start van de {_naam} ({_et1_deadline.strftime('%d-%m-%Y %H:%M')}).")
 
-            _ges_type_mx = st.selectbox("Resultaat type:", ["etappe", "gc", "points", "kom", "youth"],
-                                         format_func=lambda x: _TYPE_LABELS_M.get(x, x),
-                                         key=f"mx_type_{_spel_param}")
-
-            _weergave_mx = st.radio("Weergave:", ["Punten", "Positie"], horizontal=True, key=f"mx_view_{_spel_param}")
-
             _sp_rows_mx = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _speler_mx]
             _mijn_r_mx = _sp_rows_mx['renner_naam'].tolist()
             if 'tot_datum' in _sp_rows_mx.columns:
@@ -2515,33 +2512,19 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 )
             else:
                 _inactief_mx = set()
-            _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
-            _uit_type_mx = _uit_ronde[_uit_ronde['type_result'] == _ges_type_mx]
-            _tabel_mx = _RONDE_PUNTEN.get(_ges_type_mx, {})
 
-            # Build etappe type and captain multiplier lookups for matrix
-            _et_type_mx = {}
-            if not _etappes_ronde.empty and 'type' in _etappes_ronde.columns:
-                for _, _emx in _etappes_ronde.iterrows():
-                    _et_type_mx[str(_emx['etappe'])] = str(_emx.get('type', '')).strip().lower()
-            _cap_mx = {}
-            if not _keuzes_ronde.empty and 'etappe' in _keuzes_ronde.columns:
-                _sp_km = _keuzes_ronde[_keuzes_ronde['speler_naam'] == _speler_mx]
-                for _, _kmx in _sp_km.iterrows():
-                    _etk = str(_kmx['etappe'])
-                    _is_sup = 'super' in _et_type_mx.get(_etk, '')
-                    _cm = {}
-                    _ck1 = str(_kmx.get('captain_1', '')).strip()
-                    if _ck1:
-                        _cm[_ck1] = 3.0 if _is_sup else 2.0
-                    if _is_sup:
-                        _ck2 = str(_kmx.get('captain_2', '')).strip()
-                        _ck3 = str(_kmx.get('captain_3', '')).strip()
-                        if _ck2:
-                            _cm[_ck2] = 2.5
-                        if _ck3:
-                            _cm[_ck3] = 2.0
-                    _cap_mx[_etk] = _cm
+            _etappes_mx = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
+
+            # Bereken alle punten via bereken_ronde_score en groepeer per (renner, etappe)
+            _, _details_mx = bereken_ronde_score(
+                _mijn_r_mx, _uit_ronde,
+                keuzes_df=_keuzes_ronde, speler_naam=_speler_mx,
+                etappes_df=_etappes_ronde, team_df=_sp_rows_mx,
+            )
+            _pnten_mx = {}  # (renner, etappe) -> punten
+            for _d in _details_mx:
+                _k = (_d['renner'], str(_d['etappe']))
+                _pnten_mx[_k] = _pnten_mx.get(_k, 0) + _d['punten']
 
             _matrix_r = []
             for _rn_mx in sorted(_mijn_r_mx):
@@ -2549,28 +2532,15 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _rij_mx = {"Renner": _label_mx}
                 _totaal_mx = 0
                 for _et_mx in _etappes_mx:
-                    _et_r_mx = _uit_type_mx[_uit_type_mx['etappe'].astype(str) == str(_et_mx)]
-                    _r_row_mx = _et_r_mx[_et_r_mx['rider'] == _rn_mx]
-                    if not _r_row_mx.empty:
-                        _rank_mx = _r_row_mx.iloc[0]['rank']
-                        if _weergave_mx == "Punten":
-                            _base_mx = _tabel_mx.get(int(_rank_mx), 0) if str(_rank_mx).isdigit() else 0
-                            _mul_mx = _cap_mx.get(str(_et_mx), {}).get(_rn_mx, 1.0) if _ges_type_mx == 'etappe' else 1.0
-                            _pnt_mx = round(_base_mx * _mul_mx)
-                            _rij_mx[f"E{_et_mx}"] = _pnt_mx
-                            _totaal_mx += _pnt_mx
-                        else:
-                            _rij_mx[f"E{_et_mx}"] = _rank_mx
-                    else:
-                        _rij_mx[f"E{_et_mx}"] = 0 if _weergave_mx == "Punten" else "—"
-                if _weergave_mx == "Punten":
-                    _rij_mx["Totaal"] = _totaal_mx
+                    _pnt = _pnten_mx.get((_rn_mx, str(_et_mx)), 0)
+                    _rij_mx[f"E{_et_mx}"] = _pnt
+                    _totaal_mx += _pnt
+                _rij_mx["Totaal"] = _totaal_mx
                 _matrix_r.append(_rij_mx)
 
             if _matrix_r:
                 _df_mx = pd.DataFrame(_matrix_r).set_index("Renner")
-                if _weergave_mx == "Punten":
-                    _df_mx = _df_mx.sort_values("Totaal", ascending=False)
+                _df_mx = _df_mx.sort_values("Totaal", ascending=False)
                 st.dataframe(_df_mx, use_container_width=True,
                              height=TABLE_HEADER_HEIGHT + len(_df_mx) * TABLE_ROW_HEIGHT)
             else:
