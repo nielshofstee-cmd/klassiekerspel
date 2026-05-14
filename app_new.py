@@ -2168,7 +2168,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if _van_d and _van_d > _et1_date_r:
                 for _et_n, _et_d in _et_dl_sorted_r:
                     if _et_d >= _van_d:
-                        return f" (erin et. {_et_n})"
+                        return f" ➡ et. {_et_n}"
         return ""
 
     tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
@@ -2711,7 +2711,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     if _rn_tm in _inactief_tm:
                         _status_tm = '❌ Gewisseld'
                     elif _wissel_lbl_tm:
-                        _status_tm = f'🔄 Erin{_wissel_lbl_tm}'
+                        _status_tm = f'🔄{_wissel_lbl_tm}'
                     else:
                         _status_tm = '✅ Actief'
                     if not _info_tm.empty:
