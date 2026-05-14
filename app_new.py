@@ -2168,7 +2168,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
             if _van_d and _van_d > _et1_date_r:
                 for _et_n, _et_d in _et_dl_sorted_r:
                     if _et_d >= _van_d:
-                        return f" (erin et. {_et_n})"
+                        return f" ➡ et. {_et_n}"
         return ""
 
     tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
@@ -2553,11 +2553,11 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _uit_ronde.empty:
             st.info("Nog geen uitslagen beschikbaar. Scrape ze via het ⚙️ Beheer tabblad.")
         else:
-            _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren"}
+            _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren", "schildjes": "🟠 Oranje schildjes"}
             _etappe_opties_u = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
             _ges_etappe_u = st.selectbox("Selecteer etappe:", _etappe_opties_u, key=f"uit_et_{_spel_param}")
             _uit_et_u = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_ges_etappe_u)]
-            _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth"] if t in _uit_et_u['type_result'].values]
+            _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth", "schildjes"] if t in _uit_et_u['type_result'].values]
             if not _type_opties_u:
                 st.info("Geen resultaten beschikbaar voor deze etappe.")
             else:
@@ -2711,7 +2711,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     if _rn_tm in _inactief_tm:
                         _status_tm = '❌ Gewisseld'
                     elif _wissel_lbl_tm:
-                        _status_tm = f'🔄 Erin{_wissel_lbl_tm}'
+                        _status_tm = f'🔄{_wissel_lbl_tm}'
                     else:
                         _status_tm = '✅ Actief'
                     if not _info_tm.empty:
