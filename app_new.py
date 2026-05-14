@@ -1339,6 +1339,33 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                 return True
         return False
 
+    # Build race-status tracking: DNS blocks same etappe; any non-numeric rank blocks subsequent etappes
+    _dns_per_et = {}   # etappe_str -> set of rider_lower with DNS
+    _out_from_et = {}  # rider_lower -> earliest etappe int with non-numeric rank
+    _et_rows_racing = uit_df[uit_df['type_result'].str.strip().str.lower() == 'etappe']
+    for _, _erow in _et_rows_racing.iterrows():
+        _rn_e = str(_erow.get('rider', '')).strip().lower()
+        _rank_e = str(_erow.get('rank', '')).strip()
+        _et_e = str(_erow.get('etappe', ''))
+        if not _rn_e or not _rank_e or _rank_e.lower() in ('', 'nan'):
+            continue
+        if not _rank_e.isdigit():
+            _et_num = int(_et_e) if _et_e.isdigit() else 0
+            if _rank_e.upper() == 'DNS':
+                _dns_per_et.setdefault(_et_e, set()).add(_rn_e)
+            if _rn_e not in _out_from_et or _et_num < _out_from_et[_rn_e]:
+                _out_from_et[_rn_e] = _et_num
+
+    def _racing_in(rider_lower, etappe_str):
+        """False if rider has DNS in this etappe, or any non-numeric rank in a prior etappe."""
+        if rider_lower in _dns_per_et.get(etappe_str, set()):
+            return False
+        if rider_lower in _out_from_et:
+            _curr = int(etappe_str) if str(etappe_str).isdigit() else 0
+            if _out_from_et[rider_lower] < _curr:
+                return False
+        return True
+
     # Build captain lookup: etappe_str -> {rider_name: multiplier}
     _cap_lkp = {}
     if keuzes_df is not None and not keuzes_df.empty and speler_naam:
@@ -1372,6 +1399,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
         type_r = str(row.get('type_result', '')).strip()
         etappe_str = str(row.get('etappe', ''))
         if not _active(rider_key, etappe_str):
+            continue
+        if not _racing_in(rider_key, etappe_str):
             continue
         # Captain multiplier only applies to individual etappe points
         multiplier = _cap_lkp.get(etappe_str, {}).get(rider, 1.0) if type_r == 'etappe' else 1.0
@@ -1438,6 +1467,8 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
             if _rider_saved.lower() == _leader.lower():
                 continue
             if not _active(_rider_saved.lower(), _et):
+                continue
+            if not _racing_in(_rider_saved.lower(), _et):
                 continue
             if _rider_team.get(_rider_saved.lower(), '') == _leader_team:
                 _mul = 1.0
