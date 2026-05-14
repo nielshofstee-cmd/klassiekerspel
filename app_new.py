@@ -2171,7 +2171,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         return f" (erin et. {_et_n})"
         return ""
 
-
+    tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
         ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
     )
     with tab_ploeg:
