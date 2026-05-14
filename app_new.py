@@ -2477,7 +2477,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 _rijen_pu.append({"Deelnemer": _sp_u, "Totaal": _totaal_u, "Renners (punten)": _samenvatting or "—"})
             if _rijen_pu:
                 _df_pu = pd.DataFrame(_rijen_pu).sort_values("Totaal", ascending=False)
-                st.dataframe(_df_pu, hide_index=True, use_container_width=True,
+                st.dataframe(_df_pu, hide_index=True, use_container_width=False,
+                             column_config={
+                                 "Deelnemer": st.column_config.TextColumn("Deelnemer", width=130),
+                                 "Totaal": st.column_config.NumberColumn("Totaal", width=80),
+                                 "Renners (punten)": st.column_config.TextColumn("Renners (punten)", width=1200),
+                             },
                              height=TABLE_HEADER_HEIGHT + len(_df_pu) * TABLE_ROW_HEIGHT)
 
     # =============================================
