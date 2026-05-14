@@ -1302,6 +1302,29 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
                 except (ValueError, TypeError):
                     pass
 
+    # Vul ontbrekende deadlines aan via interpolatie tussen bekende deadlines
+    if _et_dl_lkp:
+        _all_et_strs = set(str(row.get('etappe', '')) for _, row in uit_df.iterrows()
+                           if str(row.get('etappe', '')).isdigit())
+        _known_sorted = sorted([(int(k), v) for k, v in _et_dl_lkp.items() if k.isdigit()])
+        from datetime import timedelta as _td
+        for _et_s in _all_et_strs:
+            if _et_s in _et_dl_lkp:
+                continue
+            _n = int(_et_s)
+            _before = [(en, ed) for en, ed in _known_sorted if en < _n]
+            _after  = [(en, ed) for en, ed in _known_sorted if en > _n]
+            if _before and _after:
+                _n1, _d1 = _before[-1]; _n2, _d2 = _after[0]
+                _frac = (_n - _n1) / (_n2 - _n1)
+                _et_dl_lkp[_et_s] = _d1 + _td(days=round((_d2 - _d1).days * _frac))
+            elif _before:
+                _n1, _d1 = _before[-1]
+                _et_dl_lkp[_et_s] = _d1 + _td(days=_n - _n1)
+            elif _after:
+                _n2, _d2 = _after[0]
+                _et_dl_lkp[_et_s] = _d2 - _td(days=_n2 - _n)
+
     # Build per-rider active windows: renner_lower -> [(van_date, tot_date_or_None)]
     _rider_windows = {}
     if team_df is not None and not team_df.empty:
