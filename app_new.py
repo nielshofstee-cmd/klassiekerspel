@@ -1332,7 +1332,9 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
             return True
         _dl = _et_dl_lkp.get(etappe_str)
         if _dl is None:
-            return True  # no deadline known → assume active
+            # Geen deadline bekend voor deze etappe: actief alleen als renner geen specifieke
+            # vanaf_datum heeft (d.w.z. origineel team zonder swap-beperking)
+            return any(_van is None for _van, _tot in _rider_windows[rider_lower])
         for _van, _tot in _rider_windows[rider_lower]:
             # joined on or before deadline AND (not yet swapped out OR swapped out after deadline)
             if (_van is None or _dl >= _van) and (_tot is None or _dl < _tot):
