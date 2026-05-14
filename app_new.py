@@ -1304,6 +1304,7 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
 
     # Build per-rider active windows: renner_lower -> [(van_date, tot_date_or_None)]
     _rider_windows = {}
+    _DATE_FMTS = ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y")
     if team_df is not None and not team_df.empty:
         for _, _tr in team_df.iterrows():
             _rn = str(_tr.get('renner_naam', '')).strip().lower()
@@ -1311,14 +1312,14 @@ def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, 
             _tot_s = str(_tr.get('tot_datum', '')).strip()
             _van_d, _tot_d = None, None
             if _van_s:
-                for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                for _fmt in _DATE_FMTS:
                     try:
                         _van_d = datetime.strptime(_van_s, _fmt).date()
                         break
                     except (ValueError, TypeError):
                         pass
             if _tot_s:
-                for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                for _fmt in _DATE_FMTS:
                     try:
                         _tot_d = datetime.strptime(_tot_s, _fmt).date()
                         break
@@ -2421,11 +2422,11 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _van_s = str(_dr.get('vanaf_datum', '')).strip()
                         _tot_s = str(_dr.get('tot_datum', '')).strip()
                         _van_d = _tot_d = None
-                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
                             try:
                                 if _van_s: _van_d = datetime.strptime(_van_s, _fmt).date(); break
                             except: pass
-                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                        for _fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
                             try:
                                 if _tot_s: _tot_d = datetime.strptime(_tot_s, _fmt).date(); break
                             except: pass
