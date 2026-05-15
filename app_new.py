@@ -2781,6 +2781,19 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 for _d in _det_tm:
                     _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
 
+                # Bouw GC-rang lookup uit laatste beschikbare GC-etappe
+                _gc_rank_lkp_tm = {}
+                _gc_rows_tm = _uit_ronde[_uit_ronde['type_result'].str.strip().str.lower() == 'gc']
+                if not _gc_rows_tm.empty:
+                    _laatste_gc_et_tm = str(max(_gc_rows_tm['etappe'].unique(),
+                                                key=lambda x: int(str(x)) if str(x).isdigit() else 0))
+                    _gc_latest_tm = _gc_rows_tm[_gc_rows_tm['etappe'].astype(str) == _laatste_gc_et_tm]
+                    for _, _gr_tm in _gc_latest_tm.iterrows():
+                        _r_nm_tm = str(_gr_tm.get('rider', '')).strip()
+                        _r_rank_tm = str(_gr_tm.get('rank', '')).strip()
+                        if _r_nm_tm and _r_rank_tm.isdigit():
+                            _gc_rank_lkp_tm[_r_nm_tm] = int(_r_rank_tm)
+
                 _team_rows_tm = []
                 for _rn_tm in sorted(_sp_renners_tm):
                     _info_tm = _r_race[_r_race['renner'] == _rn_tm]
@@ -2792,10 +2805,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _status_tm = f'🔄{_wissel_lbl_tm}'
                     else:
                         _status_tm = '✅ Actief'
+                    _gc_pos_tm = _gc_rank_lkp_tm.get(_rn_tm)
+                    _gc_status_tm = str(_gc_pos_tm) if _gc_pos_tm is not None else '❌'
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
                         _team_rows_tm.append({
                             "Status": _status_tm,
+                            "GC": _gc_status_tm,
                             "Renner": _rn_tm,
                             "Categorie": _CAT_DISPLAY.get(str(_ri_tm.get('_cat', '')), str(_ri_tm.get('_cat', ''))),
                             "Ploeg": _ri_tm.get('team', ''),
@@ -2803,7 +2819,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             "Punten": _pnt_tm,
                         })
                     else:
-                        _team_rows_tm.append({"Status": _status_tm, "Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
+                        _team_rows_tm.append({"Status": _status_tm, "GC": _gc_status_tm, "Renner": _rn_tm, "Categorie": "", "Ploeg": "", "Land": "", "Punten": _pnt_tm})
                 _df_tm = (pd.DataFrame(_team_rows_tm)
                           .sort_values("Punten", ascending=False)
                           .reset_index(drop=True))
