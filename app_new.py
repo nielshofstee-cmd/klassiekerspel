@@ -2555,7 +2555,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
         else:
             _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren", "schildjes": "🟠 Oranje schildjes"}
             _etappe_opties_u = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
-            _ges_etappe_u = st.selectbox("Selecteer etappe:", _etappe_opties_u, key=f"uit_et_{_spel_param}")
+            _ges_etappe_u = st.selectbox("Selecteer etappe:", _etappe_opties_u, index=len(_etappe_opties_u) - 1, key=f"uit_et_{_spel_param}")
             _uit_et_u = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_ges_etappe_u)]
             _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth", "schildjes"] if t in _uit_et_u['type_result'].values]
             if not _type_opties_u:
@@ -2628,30 +2628,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
             else:
                 _jerseys = {'gc': '🏆', 'points': '💚', 'kom': '🔴', 'youth': '🤍'}
 
-            _TYPE_LABELS_GC = {'gc': '🏆 GC', 'points': '💚 Punten', 'kom': '🔴 KOM', 'youth': '⬜ Jongeren'}
+            _TYPE_LABELS_GC = {'gc': '🏆 GC', 'points': '💚 Punten', 'kom': '🔴 KOM', 'youth': '⬜ Jongeren', 'schildjes': '🟠 Oranje schildjes'}
 
-            # Bepaal laatste etappe met GC-data
-            _gc_rows = _uit_ronde[_uit_ronde['type_result'].str.strip().str.lower() == 'gc']
-            if _gc_rows.empty:
-                st.info("Nog geen GC-klassement beschikbaar. Scrape de GC via het Beheer tabblad.")
+            _uit_types_lower = _uit_ronde['type_result'].str.strip().str.lower()
+            _avail_types = [t for t in ['gc', 'points', 'kom', 'youth', 'schildjes'] if t in _uit_types_lower.values]
+
+            if not _avail_types:
+                st.info("Nog geen klassement beschikbaar. Scrape data via het Beheer tabblad.")
             else:
-                _laatste_gc_et = str(max(_gc_rows['etappe'].unique(),
-                                         key=lambda x: int(str(x)) if str(x).isdigit() else 0))
-
-                # Bepaal leiders per classificatie (voor jersey-toewijzing)
-                _leiders = {}
-                for _t in ['gc', 'points', 'kom', 'youth']:
-                    _t_rows = _uit_ronde[
-                        (_uit_ronde['type_result'].str.strip().str.lower() == _t) &
-                        (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
-                    ]
-                    _rank1 = _t_rows[pd.to_numeric(_t_rows['rank'], errors='coerce') == 1]
-                    if not _rank1.empty:
-                        _leiders[_t] = str(_rank1.iloc[0]['rider']).strip()
-
-                # Selecteer te tonen classificatie
-                _avail_types = [t for t in ['gc', 'points', 'kom', 'youth']
-                                 if t in _uit_ronde['type_result'].str.strip().str.lower().values]
                 _ges_klas_type = st.selectbox(
                     "Classificatie:",
                     _avail_types,
@@ -2659,30 +2643,78 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     key=f"gc_klas_type_{_spel_param}"
                 )
 
-                _klas_et_rows = _uit_ronde[
-                    (_uit_ronde['type_result'].str.strip().str.lower() == _ges_klas_type) &
-                    (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
-                ].copy()
+                if _ges_klas_type == 'schildjes':
+                    # Oranje schildjes: aggregeer over alle etappes, tel per renner
+                    _schild_rows = _uit_ronde[_uit_types_lower == 'schildjes']
+                    _schild_count = {}
+                    _schild_team = {}
+                    for _, _sr in _schild_rows.iterrows():
+                        _r_nm_s = str(_sr.get('rider', '')).strip()
+                        if _r_nm_s:
+                            _schild_count[_r_nm_s] = _schild_count.get(_r_nm_s, 0) + 1
+                            _schild_team[_r_nm_s] = str(_sr.get('team', '')).strip()
+                    _schild_sorted = sorted(_schild_count.items(), key=lambda x: x[1], reverse=True)
+                    _leider_schild = _schild_sorted[0][0] if _schild_sorted else None
+                    _last_schild_et = str(max(_schild_rows['etappe'].unique(),
+                                              key=lambda x: int(str(x)) if str(x).isdigit() else 0))
+                    st.caption(f"Alle etappes t/m etappe {_last_schild_et}")
+                    _schild_disp = []
+                    for _r_nm_s, _cnt_s in _schild_sorted:
+                        _jersey_s = '🟠' if _r_nm_s == _leider_schild else ''
+                        _schild_disp.append({
+                            'Aantal': _cnt_s,
+                            'Renner': f"{_r_nm_s} {_jersey_s}".strip(),
+                            'Ploeg': _schild_team.get(_r_nm_s, ''),
+                        })
+                    if _schild_disp:
+                        _df_schild = pd.DataFrame(_schild_disp)
+                        st.dataframe(_df_schild, hide_index=True, use_container_width=True,
+                                     height=TABLE_HEADER_HEIGHT + len(_df_schild) * TABLE_ROW_HEIGHT)
 
-                # Alleen renners met numerieke rang (geen DNS/DNF)
-                _klas_et_rows['_rank_num'] = pd.to_numeric(_klas_et_rows['rank'], errors='coerce')
-                _klas_et_rows = _klas_et_rows[_klas_et_rows['_rank_num'].notna()].sort_values('_rank_num')
+                else:
+                    # GC / punten / KOM / jongeren: laatste bekende etappe
+                    _type_rows_kl = _uit_ronde[_uit_types_lower == _ges_klas_type]
+                    if _type_rows_kl.empty:
+                        st.info(f"Nog geen {_TYPE_LABELS_GC.get(_ges_klas_type, _ges_klas_type)} data beschikbaar.")
+                    else:
+                        _laatste_gc_et = str(max(_type_rows_kl['etappe'].unique(),
+                                                 key=lambda x: int(str(x)) if str(x).isdigit() else 0))
 
-                st.caption(f"Laatste beschikbare etappe: {_laatste_gc_et}")
+                        # Leiders per type voor jersey-toewijzing
+                        _leiders = {}
+                        for _t in ['gc', 'points', 'kom', 'youth']:
+                            _t_rows = _uit_ronde[
+                                (_uit_types_lower == _t) &
+                                (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
+                            ]
+                            _rank1 = _t_rows[pd.to_numeric(_t_rows['rank'], errors='coerce') == 1]
+                            if not _rank1.empty:
+                                _leiders[_t] = str(_rank1.iloc[0]['rider']).strip()
 
-                _klas_disp = []
-                for _, _kr in _klas_et_rows.iterrows():
-                    _rider_nm = str(_kr['rider']).strip()
-                    _jersey = _jerseys.get(_ges_klas_type, '') if _leiders.get(_ges_klas_type) == _rider_nm else ''
-                    _klas_disp.append({
-                        'Rang': int(_kr['_rank_num']),
-                        'Renner': f"{_rider_nm} {_jersey}".strip(),
-                        'Ploeg': str(_kr.get('team', '')).strip(),
-                    })
-                if _klas_disp:
-                    _df_gc = pd.DataFrame(_klas_disp)
-                    st.dataframe(_df_gc, hide_index=True, use_container_width=True,
-                                 height=TABLE_HEADER_HEIGHT + len(_df_gc) * TABLE_ROW_HEIGHT)
+                        _klas_et_rows = _uit_ronde[
+                            (_uit_types_lower == _ges_klas_type) &
+                            (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
+                        ].copy()
+
+                        # Alleen renners met numerieke rang (geen DNS/DNF)
+                        _klas_et_rows['_rank_num'] = pd.to_numeric(_klas_et_rows['rank'], errors='coerce')
+                        _klas_et_rows = _klas_et_rows[_klas_et_rows['_rank_num'].notna()].sort_values('_rank_num')
+
+                        st.caption(f"Laatste beschikbare etappe: {_laatste_gc_et}")
+
+                        _klas_disp = []
+                        for _, _kr in _klas_et_rows.iterrows():
+                            _rider_nm = str(_kr['rider']).strip()
+                            _jersey = _jerseys.get(_ges_klas_type, '') if _leiders.get(_ges_klas_type) == _rider_nm else ''
+                            _klas_disp.append({
+                                'Rang': int(_kr['_rank_num']),
+                                'Renner': f"{_rider_nm} {_jersey}".strip(),
+                                'Ploeg': str(_kr.get('team', '')).strip(),
+                            })
+                        if _klas_disp:
+                            _df_gc = pd.DataFrame(_klas_disp)
+                            st.dataframe(_df_gc, hide_index=True, use_container_width=True,
+                                         height=TABLE_HEADER_HEIGHT + len(_df_gc) * TABLE_ROW_HEIGHT)
 
     # =============================================
     # MATRIX
