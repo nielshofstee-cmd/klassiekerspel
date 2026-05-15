@@ -2171,8 +2171,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         return f" ➡ et. {_et_n}"
         return ""
 
-    tab_ploeg, tab_klassement, tab_uitslagen, tab_matrix, tab_team, tab_wissels, tab_captains, tab_beheer = st.tabs(
-        ["👥 Ploeg", "🏆 Klassement", "🏁 Uitslagen", "📊 Matrix", "🚌 Mijn Team", "🔄 Wissels", "©️ Captains", "⚙️ Beheer"]
+    tab_tussenstand, tab_uitslagen, tab_gc_klas, tab_matrix, tab_team, tab_captains, tab_wissels, tab_ploeg, tab_beheer = st.tabs(
+        ["🏆 Tussenstand", "🏁 Uitslagen", "📋 Klassement", "📊 Matrix", "🚌 Mijn Team", "©️ Captains", "🔄 Wissels", "👥 Ploeg", "⚙️ Beheer"]
     )
     with tab_ploeg:
         st.markdown(f'<h1>{_flag_img_lg}{_naam} – Ploeg Selectie</h1>', unsafe_allow_html=True)
@@ -2375,8 +2375,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
     # =============================================
     # KLASSEMENT
     # =============================================
-    with tab_klassement:
-        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
+    with tab_tussenstand:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Tussenstand</h1>', unsafe_allow_html=True)
         with st.expander("🔍 Debug klassement", expanded=False):
             st.write(f"Spel: `{_spel_param}` | Ploegen geladen: {len(_pr_df_all_ronde)} rijen | Uitslagen geladen: {len(_uit_ronde)} rijen")
             if not _pr_df_all_ronde.empty:
@@ -2605,6 +2605,84 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                  "Renners (punten)": st.column_config.TextColumn("Renners (punten)", width=1200),
                              },
                              height=TABLE_HEADER_HEIGHT + len(_df_pu) * TABLE_ROW_HEIGHT)
+
+    # =============================================
+    # MATRIX
+    # =============================================
+    # =============================================
+    # KLASSEMENT (GC-overzicht)
+    # =============================================
+    with tab_gc_klas:
+        st.markdown(f'<h1>{_flag_img_lg}{_naam} – Klassement</h1>', unsafe_allow_html=True)
+        if _uit_ronde.empty:
+            st.info("Nog geen uitslagen beschikbaar.")
+        else:
+            # Jersey-kleuren per ronde-type
+            _spel_lower = _spel_param.lower()
+            if 'giro' in _spel_lower:
+                _jerseys = {'gc': '🌸', 'points': '💜', 'kom': '💙', 'youth': '🤍'}
+            elif 'tour' in _spel_lower or 'tdf' in _spel_lower:
+                _jerseys = {'gc': '💛', 'points': '💚', 'kom': '🔴', 'youth': '🤍'}
+            elif 'vuelta' in _spel_lower:
+                _jerseys = {'gc': '🔴', 'points': '💚', 'kom': '💙', 'youth': '🤍'}
+            else:
+                _jerseys = {'gc': '🏆', 'points': '💚', 'kom': '🔴', 'youth': '🤍'}
+
+            _TYPE_LABELS_GC = {'gc': '🏆 GC', 'points': '💚 Punten', 'kom': '🔴 KOM', 'youth': '⬜ Jongeren'}
+
+            # Bepaal laatste etappe met GC-data
+            _gc_rows = _uit_ronde[_uit_ronde['type_result'].str.strip().str.lower() == 'gc']
+            if _gc_rows.empty:
+                st.info("Nog geen GC-klassement beschikbaar. Scrape de GC via het Beheer tabblad.")
+            else:
+                _laatste_gc_et = str(max(_gc_rows['etappe'].unique(),
+                                         key=lambda x: int(str(x)) if str(x).isdigit() else 0))
+
+                # Bepaal leiders per classificatie (voor jersey-toewijzing)
+                _leiders = {}
+                for _t in ['gc', 'points', 'kom', 'youth']:
+                    _t_rows = _uit_ronde[
+                        (_uit_ronde['type_result'].str.strip().str.lower() == _t) &
+                        (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
+                    ]
+                    _rank1 = _t_rows[pd.to_numeric(_t_rows['rank'], errors='coerce') == 1]
+                    if not _rank1.empty:
+                        _leiders[_t] = str(_rank1.iloc[0]['rider']).strip()
+
+                # Selecteer te tonen classificatie
+                _avail_types = [t for t in ['gc', 'points', 'kom', 'youth']
+                                 if t in _uit_ronde['type_result'].str.strip().str.lower().values]
+                _ges_klas_type = st.selectbox(
+                    "Classificatie:",
+                    _avail_types,
+                    format_func=lambda x: _TYPE_LABELS_GC.get(x, x),
+                    key=f"gc_klas_type_{_spel_param}"
+                )
+
+                _klas_et_rows = _uit_ronde[
+                    (_uit_ronde['type_result'].str.strip().str.lower() == _ges_klas_type) &
+                    (_uit_ronde['etappe'].astype(str) == _laatste_gc_et)
+                ].copy()
+
+                # Alleen renners met numerieke rang (geen DNS/DNF)
+                _klas_et_rows['_rank_num'] = pd.to_numeric(_klas_et_rows['rank'], errors='coerce')
+                _klas_et_rows = _klas_et_rows[_klas_et_rows['_rank_num'].notna()].sort_values('_rank_num')
+
+                st.caption(f"Laatste beschikbare etappe: {_laatste_gc_et}")
+
+                _klas_disp = []
+                for _, _kr in _klas_et_rows.iterrows():
+                    _rider_nm = str(_kr['rider']).strip()
+                    _jersey = _jerseys.get(_ges_klas_type, '') if _leiders.get(_ges_klas_type) == _rider_nm else ''
+                    _klas_disp.append({
+                        'Rang': int(_kr['_rank_num']),
+                        'Renner': f"{_rider_nm} {_jersey}".strip(),
+                        'Ploeg': str(_kr.get('team', '')).strip(),
+                    })
+                if _klas_disp:
+                    _df_gc = pd.DataFrame(_klas_disp)
+                    st.dataframe(_df_gc, hide_index=True, use_container_width=True,
+                                 height=TABLE_HEADER_HEIGHT + len(_df_gc) * TABLE_ROW_HEIGHT)
 
     # =============================================
     # MATRIX
@@ -3286,7 +3364,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _url_etappe_val = next((v for k, _, v in _available if k == "url_etappe"), "")
                         for _url_key, _url_label, _url_val in _available:
                             _type_key = _url_key.replace("url_", "")
-                            _sc_limit = None if _type_key == "etappe" else 10
+                            _sc_limit = None  # scrape alle renners voor alle types
                             if st.button(f"Scrape {_url_label}", key=f"scrape_{_spel_param}_{_gekozen_etappe}_{_url_key}"):
                                 with st.spinner(f"Scrapen van {_url_label}..."):
                                     _ok, _result = scrape_pcs_resultaat(_url_val, limit=_sc_limit)
@@ -3319,7 +3397,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             _all_ok = True
                             for _url_key, _url_label, _url_val in _available:
                                 _type_key = _url_key.replace("url_", "")
-                                _sc_limit = None if _type_key == "etappe" else 10
+                                _sc_limit = None  # scrape alle renners voor alle types
                                 with st.spinner(f"Scrapen van {_url_label}..."):
                                     _ok, _result = scrape_pcs_resultaat(_url_val, limit=_sc_limit)
                                 if _ok:
