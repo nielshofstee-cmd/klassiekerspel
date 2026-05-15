@@ -2781,7 +2781,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 for _d in _det_tm:
                     _renner_pnt_tm[_d['renner']] = _renner_pnt_tm.get(_d['renner'], 0) + _d['punten']
 
-                # Bouw GC-rang lookup uit laatste beschikbare GC-etappe
+                # Bouw GC-rang lookup uit laatste beschikbare GC-etappe (lowercase keys)
                 _gc_rank_lkp_tm = {}
                 _gc_rows_tm = _uit_ronde[_uit_ronde['type_result'].str.strip().str.lower() == 'gc']
                 if not _gc_rows_tm.empty:
@@ -2789,7 +2789,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                                 key=lambda x: int(str(x)) if str(x).isdigit() else 0))
                     _gc_latest_tm = _gc_rows_tm[_gc_rows_tm['etappe'].astype(str) == _laatste_gc_et_tm]
                     for _, _gr_tm in _gc_latest_tm.iterrows():
-                        _r_nm_tm = str(_gr_tm.get('rider', '')).strip()
+                        _r_nm_tm = str(_gr_tm.get('rider', '')).strip().lower()
                         _r_rank_tm = str(_gr_tm.get('rank', '')).strip()
                         if _r_nm_tm and _r_rank_tm.isdigit():
                             _gc_rank_lkp_tm[_r_nm_tm] = int(_r_rank_tm)
@@ -2805,7 +2805,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _status_tm = f'🔄{_wissel_lbl_tm}'
                     else:
                         _status_tm = '✅ Actief'
-                    _gc_pos_tm = _gc_rank_lkp_tm.get(_rn_tm)
+                    _gc_pos_tm = _gc_rank_lkp_tm.get(_rn_tm.lower())
                     _gc_status_tm = str(_gc_pos_tm) if _gc_pos_tm is not None else '❌'
                     if not _info_tm.empty:
                         _ri_tm = _info_tm.iloc[0]
