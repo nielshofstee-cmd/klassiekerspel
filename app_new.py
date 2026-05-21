@@ -2915,16 +2915,35 @@ if _spel_param in ("giro", "tour", "vuelta"):
                 st.info(f"Je hebt nog geen ploeg opgeslagen voor {_naam}.")
             else:
                 _nu_w = datetime.now(_AMS)
-                _today_w = pd.to_datetime(_nu_w.date())
+                _today_date_w = _nu_w.date()
+                _today_w = pd.to_datetime(_today_date_w)
+                _DATE_FMTS_W = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d %H:%M")
+
+                def _parse_date_w(s):
+                    s = str(s).strip()
+                    if not s or s.lower() in ('nan', 'none', 'nat', ''):
+                        return None
+                    for _fmt in _DATE_FMTS_W:
+                        try:
+                            return datetime.strptime(s, _fmt).date()
+                        except (ValueError, TypeError):
+                            pass
+                    return None
+
                 if 'tot_datum' in _sp_rows_w.columns and 'vanaf_datum' in _sp_rows_w.columns:
-                    _van_parsed_w = pd.to_datetime(_sp_rows_w['vanaf_datum'], errors='coerce')
-                    _tot_parsed_w = pd.to_datetime(_sp_rows_w['tot_datum'], errors='coerce')
-                    _mask_act_w = (
-                        (_van_parsed_w.isna() | (_van_parsed_w <= _today_w)) &
-                        (_tot_parsed_w.isna() | (_tot_parsed_w > _today_w))
+                    _actief_w = []
+                    for _, _rw in _sp_rows_w.iterrows():
+                        _van_d = _parse_date_w(_rw.get('vanaf_datum', ''))
+                        _tot_d = _parse_date_w(_rw.get('tot_datum', ''))
+                        if _van_d and _van_d > _today_date_w:
+                            continue  # nog niet gestart
+                        if _tot_d and _tot_d <= _today_date_w:
+                            continue  # al gewisseld/verlopen
+                        _actief_w.append(str(_rw.get('renner_naam', '')).strip())
+                    _wissels_gebruikt_w = sum(
+                        1 for _, _rw in _sp_rows_w.iterrows()
+                        if _parse_date_w(_rw.get('tot_datum', '')) is not None
                     )
-                    _actief_w = _sp_rows_w[_mask_act_w]['renner_naam'].tolist()
-                    _wissels_gebruikt_w = int((_sp_rows_w['tot_datum'].notna() & (_sp_rows_w['tot_datum'] != "")).sum())
                 else:
                     _actief_w = _sp_rows_w['renner_naam'].tolist()
                     _wissels_gebruikt_w = 0
@@ -3025,11 +3044,26 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _debug_overlap = sorted(set(_actief_w_norm.keys()) & _dnf_renners_w)
                     st.write(f"**Overlap (wissels mogelijk):** {_debug_overlap or '(geen — controleer naamsverschil!)'}")
                     st.write(f"**_sp_rows_w shape:** {_sp_rows_w.shape}, columns: {list(_sp_rows_w.columns)}")
-                    st.write(f"**_today_w:** {_today_w}")
-                    st.dataframe(_sp_rows_w[['renner_naam','vanaf_datum','tot_datum']].head(5)
-                                 if all(c in _sp_rows_w.columns for c in ['renner_naam','vanaf_datum','tot_datum'])
-                                 else _sp_rows_w.head(5),
-                                 hide_index=True, use_container_width=True)
+                    st.write(f"**_today_w:** {_today_w} (date: {_today_date_w})")
+                    if all(c in _sp_rows_w.columns for c in ['renner_naam','vanaf_datum','tot_datum']):
+                        _dbg_rows_w = []
+                        for _, _rw in _sp_rows_w.iterrows():
+                            _vd = _parse_date_w(_rw.get('vanaf_datum', ''))
+                            _td = _parse_date_w(_rw.get('tot_datum', ''))
+                            _reden = ""
+                            if _vd and _vd > _today_date_w:
+                                _reden = f"van ({_vd}) > vandaag"
+                            elif _td and _td <= _today_date_w:
+                                _reden = f"tot ({_td}) <= vandaag"
+                            _dbg_rows_w.append({
+                                "Renner": str(_rw.get('renner_naam','')).strip(),
+                                "vanaf_datum (raw)": str(_rw.get('vanaf_datum','')),
+                                "tot_datum (raw)": str(_rw.get('tot_datum','')),
+                                "van_parsed": str(_vd),
+                                "tot_parsed": str(_td),
+                                "Actief": "✅" if not _reden else f"❌ {_reden}",
+                            })
+                        st.dataframe(pd.DataFrame(_dbg_rows_w), hide_index=True, use_container_width=True)
                     _debug_match = []
                     for _an, _ao in sorted(_actief_w_norm.items()):
                         _in_dnf = _an in _dnf_renners_w
