@@ -3044,26 +3044,9 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _debug_overlap = sorted(set(_actief_w_norm.keys()) & _dnf_renners_w)
                     st.write(f"**Overlap (wissels mogelijk):** {_debug_overlap or '(geen — controleer naamsverschil!)'}")
                     st.write(f"**_sp_rows_w shape:** {_sp_rows_w.shape}, columns: {list(_sp_rows_w.columns)}")
-                    st.write(f"**_today_w:** {_today_w} (date: {_today_date_w})")
+                    st.write(f"**_today_w:** {_today_w}")
                     if all(c in _sp_rows_w.columns for c in ['renner_naam','vanaf_datum','tot_datum']):
-                        _dbg_rows_w = []
-                        for _, _rw in _sp_rows_w.iterrows():
-                            _vd = _parse_date_w(_rw.get('vanaf_datum', ''))
-                            _td = _parse_date_w(_rw.get('tot_datum', ''))
-                            _reden = ""
-                            if _vd and _vd > _today_date_w:
-                                _reden = f"van ({_vd}) > vandaag"
-                            elif _td and _td <= _today_date_w:
-                                _reden = f"tot ({_td}) <= vandaag"
-                            _dbg_rows_w.append({
-                                "Renner": str(_rw.get('renner_naam','')).strip(),
-                                "vanaf_datum (raw)": str(_rw.get('vanaf_datum','')),
-                                "tot_datum (raw)": str(_rw.get('tot_datum','')),
-                                "van_parsed": str(_vd),
-                                "tot_parsed": str(_td),
-                                "Actief": "✅" if not _reden else f"❌ {_reden}",
-                            })
-                        st.dataframe(pd.DataFrame(_dbg_rows_w), hide_index=True, use_container_width=True)
+                        st.dataframe(_sp_rows_w[['renner_naam','vanaf_datum','tot_datum']], hide_index=True, use_container_width=True)
                     _debug_match = []
                     for _an, _ao in sorted(_actief_w_norm.items()):
                         _in_dnf = _an in _dnf_renners_w
