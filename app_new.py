@@ -1265,9 +1265,16 @@ _RONDE_PUNTEN = {
     "points": {1:8,  2:6, 3:4, 4:2, 5:1},
     "kom":    {1:8,  2:6, 3:4, 4:2, 5:1},
     "youth":  {1:6,  2:4, 3:3, 4:2, 5:1},
+    # Eindklassement (na de laatste etappe)
+    "gc_final":     {1:100, 2:80, 3:60, 4:50, 5:40, 6:36, 7:32, 8:28, 9:24, 10:22,
+                     11:20, 12:18, 13:16, 14:14, 15:12, 16:10, 17:8, 18:6, 19:4, 20:2},
+    "points_final": {1:80, 2:60, 3:40, 4:30, 5:20, 6:10, 7:8, 8:6, 9:4, 10:2},
+    "kom_final":    {1:80, 2:60, 3:40, 4:30, 5:20, 6:10, 7:8, 8:6, 9:4, 10:2},
+    "youth_final":  {1:60, 2:40, 3:30, 4:20, 5:10},
 }
 
-_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3}
+_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3,
+               'gc_final': 24, 'points_final': 18, 'kom_final': 18, 'youth_final': 9}
 
 
 def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None, team_df=None):
@@ -2553,11 +2560,12 @@ if _spel_param in ("giro", "tour", "vuelta"):
         if _uit_ronde.empty:
             st.info("Nog geen uitslagen beschikbaar. Scrape ze via het ⚙️ Beheer tabblad.")
         else:
-            _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren", "schildjes": "🟠 Oranje schildjes"}
+            _TYPE_LABELS_U = {"etappe": "🏁 Etappe", "gc": "🏆 GC", "points": "💚 Punten", "kom": "🔴 KOM", "youth": "⬜ Jongeren", "schildjes": "🟠 Oranje schildjes",
+                              "gc_final": "🏆 Eindklassement GC", "points_final": "💚 Eindklassement Punten", "kom_final": "🔴 Eindklassement KOM", "youth_final": "⬜ Eindklassement Jongeren"}
             _etappe_opties_u = sorted(_uit_ronde['etappe'].unique(), key=lambda x: int(str(x)) if str(x).isdigit() else 0)
             _ges_etappe_u = st.selectbox("Selecteer etappe:", _etappe_opties_u, index=len(_etappe_opties_u) - 1, key=f"uit_et_{_spel_param}")
             _uit_et_u = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_ges_etappe_u)]
-            _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth", "schildjes"] if t in _uit_et_u['type_result'].values]
+            _type_opties_u = [t for t in ["etappe", "gc", "points", "kom", "youth", "schildjes", "gc_final", "points_final", "kom_final", "youth_final"] if t in _uit_et_u['type_result'].values]
             if not _type_opties_u:
                 st.info("Geen resultaten beschikbaar voor deze etappe.")
             else:
@@ -2875,9 +2883,13 @@ if _spel_param in ("giro", "tour", "vuelta"):
                         _TYPE_NL = {
                             'etappe': '🏁 Etappe', 'gc': '🏆 GC', 'points': '💚 Punten',
                             'kom': '🔴 KOM', 'youth': '⬜ Jongeren', 'schildjes': '🟠 Schildjes',
+                            'gc_final': '🏆 Eind GC', 'points_final': '💚 Eind Punten',
+                            'kom_final': '🔴 Eind KOM', 'youth_final': '⬜ Eind Jongeren',
                             'team_etappe': '👥 Team etappe', 'team_gc': '👥 Team GC',
                             'team_points': '👥 Team punten', 'team_kom': '👥 Team KOM',
                             'team_youth': '👥 Team jongeren',
+                            'team_gc_final': '👥 Team eind GC', 'team_points_final': '👥 Team eind Punten',
+                            'team_kom_final': '👥 Team eind KOM', 'team_youth_final': '👥 Team eind Jongeren',
                         }
                         _rows_detail = [
                             {
@@ -3488,6 +3500,38 @@ if _spel_param in ("giro", "tour", "vuelta"):
                                     st.error(f"❌ Oranje schildjes scrapen mislukt: {_sh_result}")
                                     _all_ok = False
                             if _all_ok:
+                                st.balloons()
+
+                        st.divider()
+
+                        # ── Eindklassement opslaan ────────────────────────────
+                        st.subheader("🏅 Eindklassement opslaan")
+                        st.caption("Kopieert de GC/Punten/KOM/Jongeren uitslag van de gekozen etappe als eindklassement (aparte puntentelling na afloop van de ronde).")
+                        _eind_etappe_src = st.selectbox(
+                            "Etappe als bron voor eindklassement:",
+                            _etappe_keuzes,
+                            index=len(_etappe_keuzes) - 1,
+                            key=f"eind_et_src_{_spel_param}"
+                        )
+                        _EIND_TYPES = [("gc", "gc_final", "🏆 GC"), ("points", "points_final", "💚 Punten"),
+                                       ("kom", "kom_final", "🔴 KOM"), ("youth", "youth_final", "⬜ Jongeren")]
+                        if st.button(f"💾 Sla eindklassement op (etappe {_eind_etappe_src})", key=f"save_eind_{_spel_param}"):
+                            _eind_src_rows = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_eind_etappe_src)]
+                            _eind_ok = True
+                            for _src_type, _dst_type, _lbl in _EIND_TYPES:
+                                _rows_t = _eind_src_rows[_eind_src_rows['type_result'].str.strip().str.lower() == _src_type]
+                                if _rows_t.empty:
+                                    st.warning(f"Geen {_lbl}-data gevonden voor etappe {_eind_etappe_src}.")
+                                    continue
+                                _data_t = [{"rank": str(r["rank"]), "rider": str(r["rider"]), "team": str(r.get("team", ""))}
+                                           for _, r in _rows_t.iterrows()]
+                                _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _eind_etappe_src, _dst_type, _data_t)
+                                if _sv_ok:
+                                    st.success(f"✅ {_lbl}: {_sv_msg}")
+                                else:
+                                    st.error(f"❌ {_lbl} opslaan mislukt: {_sv_msg}")
+                                    _eind_ok = False
+                            if _eind_ok:
                                 st.balloons()
 
                         st.divider()
