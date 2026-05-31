@@ -1273,7 +1273,8 @@ _RONDE_PUNTEN = {
     "youth_final":  {1:60, 2:40, 3:30, 4:20, 5:10},
 }
 
-_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3}
+_TEAM_BONUS = {'etappe': 10, 'gc': 8, 'points': 6, 'kom': 6, 'youth': 3,
+               'gc_final': 24, 'points_final': 18, 'kom_final': 18, 'youth_final': 9}
 
 
 def bereken_ronde_score(mijn_renners, uit_df, keuzes_df=None, speler_naam=None, etappes_df=None, team_df=None):
@@ -2887,6 +2888,8 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             'team_etappe': '👥 Team etappe', 'team_gc': '👥 Team GC',
                             'team_points': '👥 Team punten', 'team_kom': '👥 Team KOM',
                             'team_youth': '👥 Team jongeren',
+                            'team_gc_final': '👥 Team eind GC', 'team_points_final': '👥 Team eind Punten',
+                            'team_kom_final': '👥 Team eind KOM', 'team_youth_final': '👥 Team eind Jongeren',
                         }
                         _rows_detail = [
                             {
