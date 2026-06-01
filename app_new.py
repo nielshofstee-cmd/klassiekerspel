@@ -2428,14 +2428,20 @@ if _spel_param in ("giro", "tour", "vuelta"):
             _klas_col_et = f"Etappe {_laatste_et_kl}" if _laatste_et_kl else None
 
             _klas_data = []
+            _FINAL_TYPES_KL = {'gc_final', 'points_final', 'kom_final', 'youth_final',
+                                'team_gc_final', 'team_points_final', 'team_kom_final', 'team_youth_final'}
             with st.spinner("Klassement berekenen..."):
                 for _sp_kl in _spelers_kl:
                     _renners_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]['renner_naam'].tolist()
                     _team_df_kl = _pr_df_all_ronde[_pr_df_all_ronde['speler_naam'] == _sp_kl]
                     _tot_kl, _det_kl = bereken_ronde_score(_renners_kl, _uit_ronde, _keuzes_ronde, _sp_kl, _etappes_ronde, _team_df_kl)
-                    _row_kl = {"Deelnemer": _sp_kl, "Punten": _tot_kl, "Poules": _get_poules(_sp_kl)}
+                    _eind_kl = sum(d['punten'] for d in _det_kl if d.get('type') in _FINAL_TYPES_KL)
+                    _row_kl = {"Deelnemer": _sp_kl, "Punten": _tot_kl, "Eindklassement": _eind_kl, "Poules": _get_poules(_sp_kl)}
                     if _laatste_et_kl:
-                        _row_kl[_klas_col_et] = sum(d['punten'] for d in _det_kl if str(d.get('etappe', '')) == _laatste_et_kl)
+                        _row_kl[_klas_col_et] = sum(
+                            d['punten'] for d in _det_kl
+                            if str(d.get('etappe', '')) == _laatste_et_kl and d.get('type') not in _FINAL_TYPES_KL
+                        )
                     _klas_data.append(_row_kl)
 
             # ── Scoring debug ────────────────────────────────────────────────
@@ -2521,10 +2527,14 @@ if _spel_param in ("giro", "tour", "vuelta"):
                     _cols_show = ['↕'] + _cols_show
                     _col_cfg['↕'] = st.column_config.TextColumn('↕', width=50)
 
-                # Etappe column first, then Tussenstand
+                # Etappe column first, then Eindklassement (if any > 0), then Tussenstand
                 if _klas_col_et and _klas_col_et in _ds.columns:
                     _cols_show.append(_klas_col_et)
                     _col_cfg[_klas_col_et] = st.column_config.NumberColumn(_klas_col_et, format='%d')
+
+                if 'Eindklassement' in _ds.columns and _ds['Eindklassement'].sum() > 0:
+                    _cols_show.append('Eindklassement')
+                    _col_cfg['Eindklassement'] = st.column_config.NumberColumn('🏅 Eindklassement', format='%d')
 
                 _cols_show.append('Punten')
                 _col_cfg['Punten'] = st.column_config.NumberColumn('Tussenstand', format='%d')
