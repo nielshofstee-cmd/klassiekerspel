@@ -3510,12 +3510,7 @@ if _spel_param in ("giro", "tour", "vuelta"):
                             st.info("Geen classificatie-URLs gevonden in de sheet (verwacht rijen met etappe = gc/points/kom/youth).")
                         else:
                             _EIND_MAP = {'gc': 'gc_final', 'points': 'points_final', 'kom': 'kom_final', 'youth': 'youth_final'}
-                            _eind_etappe_label = st.selectbox(
-                                "Sla eindklassement op als etappe:",
-                                _etappe_keuzes,
-                                index=len(_etappe_keuzes) - 1,
-                                key=f"eind_et_src_{_spel_param}"
-                            )
+                            _eind_etappe_label = _etappe_keuzes[-1]
                             if st.button("💾 Scrape & sla eindklassement op", key=f"save_eind_{_spel_param}"):
                                 _eind_ok = True
                                 for _, _kr in _et_klas_df.iterrows():
