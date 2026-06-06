@@ -1081,10 +1081,10 @@ def scrape_startlijst_en_save(koers_naam, url):
         return False, f"Startlijst fout: {str(e)}"
 
 
-def scrape_pcs_resultaat(url, limit=None):
+def scrape_pcs_resultaat(url, limit=None, type_hint=None):
     """
     Generieke PCS scraper voor etappe-uitslag, GC, punten, KOM en youth.
-    Dezelfde tabel-parsing als scrape_en_save() maar zonder sheet-opslag.
+    type_hint: 'gc'/'points'/'kom'/'youth' om die tabel van een stage-pagina te selecteren.
     Geeft (True, list_of_dicts) of (False, foutmelding) terug.
     limit: max aantal rijen te bewaren (None = alles)
     """
@@ -1097,8 +1097,9 @@ def scrape_pcs_resultaat(url, limit=None):
 
         _url_clean = url.rstrip('/').lower()
         results_tables = soup.find_all('table', class_=lambda c: c and 'results' in c)
-        _suffix = next((s for s in ('gc', 'points', 'kom', 'youth')
-                        if _url_clean.endswith('-' + s)), None)
+        # URL-suffix bepaalt type (dedicated classificatiepagina), type_hint overschrijft
+        _suffix = type_hint or next((s for s in ('gc', 'points', 'kom', 'youth')
+                                     if _url_clean.endswith('-' + s) or _url_clean.endswith('/' + s)), None)
 
         if not results_tables:
             table = None
@@ -3445,92 +3446,58 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                         st.divider()
 
-                        # ── Etappe resultaten ─────────────────────────────────
-                        st.subheader(f"🏁 Etappe {_gekozen_etappe} – resultaten")
-                        _col_et1, _col_et2 = st.columns(2)
-                        with _col_et1:
-                            if st.button(f"Scrape etappe {_gekozen_etappe}", key=f"scrape_et_{_spel_param}_{_gekozen_etappe}", disabled=not _url_etappe_val):
-                                with st.spinner("Scrapen..."):
-                                    _ok, _result = scrape_pcs_resultaat(_url_etappe_val, limit=None)
-                                if _ok:
-                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "etappe", _result)
-                                    st.success(f"✅ {_sv_msg}") if _sv_ok else st.error(f"Opslaan mislukt: {_sv_msg}")
-                                else:
-                                    st.error(f"Scrapen mislukt: {_result}")
-                        with _col_et2:
-                            if st.button(f"🟠 Scrape oranje schildjes", key=f"scrape_schild_{_spel_param}_{_gekozen_etappe}", disabled=not _url_etappe_val):
-                                with st.spinner("Scrapen van oranje schildjes..."):
+                        # ── Etappe resultaten + klassementen (allemaal van stage URL) ──
+                        st.subheader(f"🏁 Etappe {_gekozen_etappe}")
+                        _ET_SCRAPE_TYPES = [
+                            ("etappe",  "🏁 Etappe",        None),
+                            ("gc",      "🏆 GC",             "gc"),
+                            ("points",  "💚 Punten",         "points"),
+                            ("kom",     "🔴 KOM",            "kom"),
+                            ("youth",   "⬜ Jongeren",       "youth"),
+                        ]
+                        _et_btn_cols = st.columns(len(_ET_SCRAPE_TYPES) + 1)
+                        for _bi, (_btype, _blbl, _bhint) in enumerate(_ET_SCRAPE_TYPES):
+                            with _et_btn_cols[_bi]:
+                                if st.button(f"Scrape\n{_blbl}", key=f"scrape_{_btype}_{_spel_param}_{_gekozen_etappe}", disabled=not _url_etappe_val):
+                                    with st.spinner(f"Scrapen {_blbl}..."):
+                                        _ok, _result = scrape_pcs_resultaat(_url_etappe_val, limit=None, type_hint=_bhint)
+                                    if _ok:
+                                        _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _btype, _result)
+                                        st.success(f"✅ {_sv_msg}") if _sv_ok else st.error(f"❌ {_sv_msg}")
+                                    else:
+                                        st.error(f"❌ {_result}")
+                        with _et_btn_cols[len(_ET_SCRAPE_TYPES)]:
+                            if st.button("🟠 Schildjes", key=f"scrape_schild_{_spel_param}_{_gekozen_etappe}", disabled=not _url_etappe_val):
+                                with st.spinner("Scrapen schildjes..."):
                                     _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
                                 if _sh_ok:
                                     _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
-                                    st.success(f"✅ {_sv_msg}") if _sv_ok else st.error(f"Opslaan mislukt: {_sv_msg}")
+                                    st.success(f"✅ {_sv_msg}") if _sv_ok else st.error(f"❌ {_sv_msg}")
                                 else:
-                                    st.error(f"Scrapen mislukt: {_sh_result}")
-
-                        st.divider()
-
-                        # ── Klassement na etappe (gc/points/kom/youth) ────────
-                        st.subheader(f"📊 Klassement na etappe {_gekozen_etappe}")
-                        if _et_klas_df.empty:
-                            st.info("Geen klassement-URLs gevonden in de sheet (verwacht rijen met etappe = gc/points/kom/youth).")
-                        else:
-                            _klas_cols = st.columns(len(_et_klas_df))
-                            for _ki, (_, _kr) in enumerate(_et_klas_df.iterrows()):
-                                _ktype = str(_kr['etappe']).strip().lower()
-                                _kurl  = str(_kr.get('url_etappe', '')).strip()
-                                _klbl  = _KLAS_TYPES.get(_ktype, _ktype)
-                                with _klas_cols[_ki]:
-                                    st.markdown(f"**{_klbl}**")
-                                    if _kurl:
-                                        st.caption(_kurl)
-                                    if st.button(f"Scrape {_klbl}", key=f"scrape_kl_{_spel_param}_{_gekozen_etappe}_{_ktype}", disabled=not _kurl):
-                                        with st.spinner(f"Scrapen {_klbl}..."):
-                                            _ok, _result = scrape_pcs_resultaat(_kurl, limit=None)
-                                        if _ok:
-                                            _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _ktype, _result)
-                                            st.success(f"✅ {_sv_msg}") if _sv_ok else st.error(f"Opslaan mislukt: {_sv_msg}")
-                                        else:
-                                            st.error(f"Scrapen mislukt: {_result}")
+                                    st.error(f"❌ {_sh_result}")
 
                         st.divider()
 
                         # ── Scrape alles ──────────────────────────────────────
-                        if st.button(f"🔄 Scrape alles (etappe {_gekozen_etappe})", key=f"scrape_all_{_spel_param}_{_gekozen_etappe}"):
+                        if st.button(f"🔄 Scrape alles (etappe {_gekozen_etappe})", key=f"scrape_all_{_spel_param}_{_gekozen_etappe}", disabled=not _url_etappe_val):
                             _all_ok = True
-                            # Etappe
-                            if _url_etappe_val:
-                                with st.spinner("Scrapen etappe..."):
-                                    _ok, _result = scrape_pcs_resultaat(_url_etappe_val, limit=None)
+                            for _btype, _blbl, _bhint in _ET_SCRAPE_TYPES:
+                                with st.spinner(f"Scrapen {_blbl}..."):
+                                    _ok, _result = scrape_pcs_resultaat(_url_etappe_val, limit=None, type_hint=_bhint)
                                 if _ok:
-                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "etappe", _result)
-                                    st.success(f"✅ Etappe: {_sv_msg}") if _sv_ok else (st.error(f"❌ Etappe opslaan: {_sv_msg}") or setattr(_all_ok, '__class__', bool) or False)
+                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _btype, _result)
+                                    st.success(f"✅ {_blbl}: {_sv_msg}") if _sv_ok else st.error(f"❌ {_blbl}: {_sv_msg}")
                                     if not _sv_ok: _all_ok = False
                                 else:
-                                    st.error(f"❌ Etappe scrapen: {_result}"); _all_ok = False
-                                # Schildjes
-                                with st.spinner("Scrapen oranje schildjes..."):
-                                    _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
-                                if _sh_ok:
-                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
-                                    st.success(f"✅ Schildjes: {_sv_msg}") if _sv_ok else st.error(f"❌ Schildjes: {_sv_msg}")
-                                    if not _sv_ok: _all_ok = False
-                                else:
-                                    st.error(f"❌ Schildjes: {_sh_result}"); _all_ok = False
-                            # Klassementen
-                            for _, _kr in _et_klas_df.iterrows():
-                                _ktype = str(_kr['etappe']).strip().lower()
-                                _kurl  = str(_kr.get('url_etappe', '')).strip()
-                                _klbl  = _KLAS_TYPES.get(_ktype, _ktype)
-                                if not _kurl:
-                                    continue
-                                with st.spinner(f"Scrapen {_klbl}..."):
-                                    _ok, _result = scrape_pcs_resultaat(_kurl, limit=None)
-                                if _ok:
-                                    _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, _ktype, _result)
-                                    st.success(f"✅ {_klbl}: {_sv_msg}") if _sv_ok else st.error(f"❌ {_klbl}: {_sv_msg}")
-                                    if not _sv_ok: _all_ok = False
-                                else:
-                                    st.error(f"❌ {_klbl}: {_result}"); _all_ok = False
+                                    st.error(f"❌ {_blbl}: {_result}"); _all_ok = False
+                            with st.spinner("Scrapen schildjes..."):
+                                _sh_ok, _sh_result = scrape_pcs_oranje_schildjes(_url_etappe_val)
+                            if _sh_ok:
+                                _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _gekozen_etappe, "schildjes", _sh_result)
+                                st.success(f"✅ Schildjes: {_sv_msg}") if _sv_ok else st.error(f"❌ Schildjes: {_sv_msg}")
+                                if not _sv_ok: _all_ok = False
+                            else:
+                                st.error(f"❌ Schildjes: {_sh_result}"); _all_ok = False
                             if _all_ok:
                                 st.balloons()
 
