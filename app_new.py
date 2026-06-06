@@ -3538,30 +3538,36 @@ if _spel_param in ("giro", "tour", "vuelta"):
 
                         # ── Eindklassement opslaan ────────────────────────────
                         st.subheader("🏅 Eindklassement opslaan")
-                        st.caption("Kopieert de GC/Punten/KOM/Jongeren uitslag van de gekozen etappe als eindklassement (aparte puntentelling na afloop van de ronde).")
-                        _eind_etappe_src = st.selectbox(
-                            "Etappe als bron voor eindklassement:",
-                            _etappe_keuzes,
-                            index=len(_etappe_keuzes) - 1,
-                            key=f"eind_et_src_{_spel_param}"
-                        )
-                        _EIND_TYPES = [("gc", "gc_final", "🏆 GC"), ("points", "points_final", "💚 Punten"),
-                                       ("kom", "kom_final", "🔴 KOM"), ("youth", "youth_final", "⬜ Jongeren")]
-                        if st.button(f"💾 Sla eindklassement op (etappe {_eind_etappe_src})", key=f"save_eind_{_spel_param}"):
-                            _eind_src_rows = _uit_ronde[_uit_ronde['etappe'].astype(str) == str(_eind_etappe_src)]
-                            _eind_ok = True
-                            for _src_type, _dst_type, _lbl in _EIND_TYPES:
-                                _rows_t = _eind_src_rows[_eind_src_rows['type_result'].str.strip().str.lower() == _src_type]
-                                if _rows_t.empty:
-                                    st.warning(f"Geen {_lbl}-data gevonden voor etappe {_eind_etappe_src}.")
-                                    continue
-                                _data_t = [{"rank": str(r["rank"]), "rider": str(r["rider"]), "team": str(r.get("team", ""))}
-                                           for _, r in _rows_t.iterrows()]
-                                _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _eind_etappe_src, _dst_type, _data_t)
-                                st.success(f"✅ {_lbl}: {_sv_msg}") if _sv_ok else st.error(f"❌ {_lbl}: {_sv_msg}")
-                                if not _sv_ok: _eind_ok = False
-                            if _eind_ok:
-                                st.balloons()
+                        st.caption("Scrapt het eindklassement direct van de GC/Punten/KOM/Jongeren URLs en slaat op als eindklassement (aparte puntentelling).")
+                        if _et_klas_df.empty:
+                            st.info("Geen classificatie-URLs gevonden in de sheet (verwacht rijen met etappe = gc/points/kom/youth).")
+                        else:
+                            _EIND_MAP = {'gc': 'gc_final', 'points': 'points_final', 'kom': 'kom_final', 'youth': 'youth_final'}
+                            _eind_etappe_label = st.selectbox(
+                                "Sla eindklassement op als etappe:",
+                                _etappe_keuzes,
+                                index=len(_etappe_keuzes) - 1,
+                                key=f"eind_et_src_{_spel_param}"
+                            )
+                            if st.button("💾 Scrape & sla eindklassement op", key=f"save_eind_{_spel_param}"):
+                                _eind_ok = True
+                                for _, _kr in _et_klas_df.iterrows():
+                                    _ktype = str(_kr['etappe']).strip().lower()
+                                    _kurl  = str(_kr.get('url_etappe', '')).strip()
+                                    _klbl  = _KLAS_TYPES.get(_ktype, _ktype)
+                                    _dst   = _EIND_MAP.get(_ktype)
+                                    if not _dst or not _kurl:
+                                        continue
+                                    with st.spinner(f"Scrapen {_klbl}..."):
+                                        _ok, _result = scrape_pcs_resultaat(_kurl, limit=None)
+                                    if _ok:
+                                        _sv_ok, _sv_msg = save_ronde_uitslagen(_spel_param, _eind_etappe_label, _dst, _result)
+                                        st.success(f"✅ {_klbl}: {_sv_msg}") if _sv_ok else st.error(f"❌ {_klbl}: {_sv_msg}")
+                                        if not _sv_ok: _eind_ok = False
+                                    else:
+                                        st.error(f"❌ {_klbl} scrapen mislukt: {_result}"); _eind_ok = False
+                                if _eind_ok:
+                                    st.balloons()
 
                         st.divider()
 
